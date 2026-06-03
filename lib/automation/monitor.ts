@@ -1,0 +1,153 @@
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import type { Source } from "@/lib/supabase/types";
+import { getSourceAdapter } from "@/lib/source-adapters/registry";
+import type { NormalizedSourcePost } from "@/lib/source-adapters/types";
+import { sendTelegramApproval } from "@/lib/automation/telegram";
+import { logAction } from "@/lib/automation/audit";
+import { logger } from "@/lib/logger";
+import { monitorConfig } from "@/lib/env";
+import { sleep } from "@/lib/sleep";
+import { withRetry } from "@/lib/retry";
+
+function normalizePublishedAt(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function importPost(source: Source, post: NormalizedSourcePost) {
+  const supabase = createSupabaseAdmin();
+  const { data: existing, error: lookupError } = await supabase
+    .from("posts")
+    .select("id")
+    .eq("source_post_id", post.sourcePostId)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  if (existing) {
+    return { imported: false, postId: existing.id };
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("posts")
+    .insert({
+      source_id: source.id,
+      source_post_id: post.sourcePostId,
+      source_url: post.sourceUrl,
+      platform: post.platform,
+      thumbnail_url: post.thumbnailUrl,
+      video_url: post.videoUrl,
+      original_caption: post.caption,
+      edited_caption: post.caption,
+      status: "pending",
+      source_published_at: normalizePublishedAt(post.publishedAt),
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  await logAction(supabase, {
+    postId: inserted.id,
+    action: "imported",
+    status: "success",
+    response: {
+      source_id: source.id,
+      source_url: post.sourceUrl,
+      platform: source.platform,
+    },
+  });
+
+  try {
+    const messageId = await sendTelegramApproval(inserted, source);
+    if (messageId) {
+      await supabase.from("posts").update({ telegram_message_id: messageId }).eq("id", inserted.id);
+    }
+  } catch (error) {
+    await logAction(supabase, {
+      postId: inserted.id,
+      action: "telegram_notification",
+      status: "failed",
+      response: { error: error instanceof Error ? error.message : String(error) },
+    });
+    logger.warn("telegram_notification_failed", { postId: inserted.id, error: String(error) });
+  }
+
+  return { imported: true, postId: inserted.id };
+}
+
+export async function processSource(source: Source) {
+  const supabase = createSupabaseAdmin();
+  const adapter = getSourceAdapter(source.platform);
+
+  logger.info("source_monitor_started", { sourceId: source.id, platform: source.platform });
+
+  const posts = await withRetry(() => adapter.getLatestPosts(source), {
+    attempts: 3,
+    onRetry: (error, attempt) =>
+      logger.warn("source_monitor_retry", { sourceId: source.id, attempt, error: String(error) }),
+  });
+
+  let imported = 0;
+  for (const post of posts) {
+    const result = await importPost(source, post);
+    if (result.imported) {
+      imported += 1;
+    }
+  }
+
+  await supabase.from("sources").update({ last_checked_at: new Date().toISOString() }).eq("id", source.id);
+  await logAction(supabase, {
+    action: "source_synced",
+    status: "success",
+    response: { source_id: source.id, imported, scanned: posts.length },
+  });
+
+  logger.info("source_monitor_finished", { sourceId: source.id, imported, scanned: posts.length });
+  return { sourceId: source.id, imported, scanned: posts.length };
+}
+
+export async function processAllActiveSources() {
+  const supabase = createSupabaseAdmin();
+  const { data: sources, error } = await supabase
+    .from("sources")
+    .select("*")
+    .eq("active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const { rateLimitMs } = monitorConfig();
+  const results = [];
+
+  for (const source of sources ?? []) {
+    try {
+      results.push(await processSource(source));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logAction(supabase, {
+        action: "source_sync_failed",
+        status: "failed",
+        response: { source_id: source.id, error: message },
+      });
+      logger.error("source_monitor_failed", { sourceId: source.id, error: message });
+      results.push({ sourceId: source.id, imported: 0, scanned: 0, error: message });
+    }
+
+    if (rateLimitMs > 0) {
+      await sleep(rateLimitMs);
+    }
+  }
+
+  return results;
+}

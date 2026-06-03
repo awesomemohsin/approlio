@@ -1,0 +1,43 @@
+name: Social Automation
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  monitor-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Monitor active sources
+        run: npm run monitor:sources
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.APP_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MONITOR_MAX_POSTS_PER_SOURCE: ${{ vars.MONITOR_MAX_POSTS_PER_SOURCE || '8' }}
+          MONITOR_RATE_LIMIT_MS: ${{ vars.MONITOR_RATE_LIMIT_MS || '1500' }}
+
+      - name: Publish approved queue
+        run: npm run publish:approved
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.APP_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          META_GRAPH_API_VERSION: ${{ vars.META_GRAPH_API_VERSION || 'v24.0' }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+          PUBLISH_BATCH_SIZE: ${{ vars.PUBLISH_BATCH_SIZE || '10' }}
