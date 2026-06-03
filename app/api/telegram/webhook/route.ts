@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertTelegramSecret } from "@/lib/api-auth";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { answerTelegramCallback } from "@/lib/automation/telegram";
+import { answerTelegramCallback, editTelegramMessageText } from "@/lib/automation/telegram";
 import { logAction } from "@/lib/automation/audit";
 import { jsonError } from "@/lib/route-utils";
 
@@ -14,6 +14,13 @@ interface TelegramUpdate {
     from?: {
       username?: string;
       id: number;
+    };
+    message?: {
+      message_id: number;
+      chat: {
+        id: number | string;
+      };
+      text?: string;
     };
   };
 }
@@ -29,13 +36,14 @@ export async function POST(request: NextRequest) {
     }
 
     const [action, postId] = callback.data.split(":");
-    if (action !== "reject" || !postId) {
+    if ((action !== "approve" && action !== "reject") || !postId) {
       return NextResponse.json({ ok: true });
     }
 
+    const status = action === "approve" ? "approved" : "rejected";
     const actor = callback.from?.username ? `telegram:${callback.from.username}` : `telegram:${callback.from?.id ?? "unknown"}`;
     const supabase = createSupabaseAdmin();
-    const { error } = await supabase.from("posts").update({ status: "rejected" }).eq("id", postId);
+    const { error } = await supabase.from("posts").update({ status }).eq("id", postId);
 
     if (error) {
       throw error;
@@ -43,12 +51,20 @@ export async function POST(request: NextRequest) {
 
     await logAction(supabase, {
       postId,
-      action: "rejected",
+      action: status === "approved" ? "approved" : "rejected",
       status: "success",
       response: { via: "telegram" },
       actor,
     });
-    await answerTelegramCallback(callback.id, "Post rejected");
+
+    const alertMessage = action === "approve" ? "Post approved for publishing!" : "Post rejected.";
+    await answerTelegramCallback(callback.id, alertMessage);
+
+    if (callback.message?.message_id && callback.message?.chat?.id) {
+      const originalText = callback.message.text || "";
+      const updatedText = `[${action === "approve" ? "APPROVED ✅" : "REJECTED ❌"}]\n\n${originalText}`;
+      await editTelegramMessageText(callback.message.chat.id, callback.message.message_id, updatedText);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
