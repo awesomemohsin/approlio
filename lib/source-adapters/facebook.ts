@@ -1,8 +1,9 @@
-import { chromium, type Browser } from "playwright";
+import type { Browser } from "playwright";
 import type { SourceAdapter, NormalizedSourcePost } from "@/lib/source-adapters/types";
 import { stablePostId } from "@/lib/source-adapters/types";
 import type { Source } from "@/lib/supabase/types";
 import { monitorConfig } from "@/lib/env";
+import { withBrowser } from "./browser-helper";
 
 function cleanFacebookUrl(rawUrl: string, platformId: string) {
   try {
@@ -60,18 +61,6 @@ function extractFacebookId(href: string) {
   return href;
 }
 
-async function withBrowser<T>(operation: (browser: Browser) => Promise<T>) {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-dev-shm-usage", "--no-sandbox"],
-  });
-
-  try {
-    return await operation(browser);
-  } finally {
-    await browser.close();
-  }
-}
 
 export class FacebookAdapter implements SourceAdapter {
   platform = "facebook" as const;
