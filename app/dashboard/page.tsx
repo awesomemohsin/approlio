@@ -78,6 +78,7 @@ export default async function DashboardPage() {
       icon: TrendingUp,
       color: "from-blue-500/20 to-blue-600/20",
       trend: "Active monitor inputs",
+      href: "/dashboard/sources",
     },
     {
       label: "Pending Approval",
@@ -85,6 +86,7 @@ export default async function DashboardPage() {
       icon: Clock,
       color: "from-amber-500/20 to-amber-600/20",
       trend: "Waiting for review",
+      href: "/dashboard/pending-queue",
     },
     {
       label: "Approved Content",
@@ -92,6 +94,7 @@ export default async function DashboardPage() {
       icon: CheckCircle2,
       color: "from-green-500/20 to-green-600/20",
       trend: "Ready to publish",
+      href: "/dashboard/approved-queue",
     },
     {
       label: "Failed Posts",
@@ -99,6 +102,7 @@ export default async function DashboardPage() {
       icon: AlertCircle,
       color: "from-red-500/20 to-red-600/20",
       trend: "Retry queue",
+      href: "/dashboard/failed",
     },
   ];
 

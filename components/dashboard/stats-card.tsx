@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +9,7 @@ interface StatsCardProps {
   icon: LucideIcon;
   color: string;
   trend?: string;
+  href?: string;
 }
 
 const StatsCard: React.FC<StatsCardProps> = ({
@@ -16,9 +18,13 @@ const StatsCard: React.FC<StatsCardProps> = ({
   icon: Icon,
   color,
   trend,
+  href,
 }) => {
-  return (
-    <div className="bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors">
+  const cardContent = (
+    <div className={cn(
+      "bg-card border border-border rounded-lg p-6 hover:border-primary/50 transition-colors h-full",
+      href && "cursor-pointer hover:bg-muted/10"
+    )}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -35,6 +41,16 @@ const StatsCard: React.FC<StatsCardProps> = ({
       </div>
     </div>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="block h-full">
+        {cardContent}
+      </Link>
+    );
+  }
+
+  return cardContent;
 };
 
 export default StatsCard;
