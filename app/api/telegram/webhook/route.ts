@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertTelegramSecret } from "@/lib/api-auth";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { answerTelegramCallback, editTelegramMessageText } from "@/lib/automation/telegram";
+import { answerTelegramCallback, editTelegramMessageText, editTelegramMessageCaption } from "@/lib/automation/telegram";
 import { logAction } from "@/lib/automation/audit";
 import { publishPost } from "@/lib/automation/publish";
 import { jsonError } from "@/lib/route-utils";
@@ -22,6 +22,7 @@ interface TelegramUpdate {
         id: number | string;
       };
       text?: string;
+      caption?: string;
     };
   };
 }
@@ -66,9 +67,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (callback.message?.message_id && callback.message?.chat?.id) {
-      const originalText = callback.message.text || "";
+      const originalText = callback.message.text || callback.message.caption || "";
       const updatedText = `[${action === "approve" ? "APPROVED ✅" : "REJECTED ❌"}]\n\n${originalText}`;
-      await editTelegramMessageText(callback.message.chat.id, callback.message.message_id, updatedText);
+      if (callback.message.caption !== undefined) {
+        await editTelegramMessageCaption(callback.message.chat.id, callback.message.message_id, updatedText);
+      } else {
+        await editTelegramMessageText(callback.message.chat.id, callback.message.message_id, updatedText);
+      }
     }
 
     return NextResponse.json({ ok: true });

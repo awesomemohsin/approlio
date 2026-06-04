@@ -32,31 +32,54 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
     caption || "(No caption detected)",
   ].join("\n");
 
-  const response = await fetch(apiUrl("sendMessage"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
-      text,
-      disable_web_page_preview: false,
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "Approve", callback_data: `approve:${post.id}` },
-            { text: "Reject", callback_data: `reject:${post.id}` },
-          ],
-          [{ text: "View Review Panel", url: reviewUrl }],
-        ],
-      },
-    }),
-  });
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: "Approve", callback_data: `approve:${post.id}` },
+        { text: "Reject", callback_data: `reject:${post.id}` },
+      ],
+      [{ text: "View Review Panel", url: reviewUrl }],
+    ],
+  };
 
-  const body = (await response.json()) as TelegramResponse;
-  if (!response.ok || !body.ok) {
-    throw new Error(body.description ?? `Telegram sendMessage failed with ${response.status}`);
+  let method = "sendMessage";
+  let body: Record<string, unknown> = {
+    chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
+    text,
+    disable_web_page_preview: false,
+    reply_markup: replyMarkup,
+  };
+
+  if (post.video_url) {
+    method = "sendVideo";
+    body = {
+      chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
+      video: post.video_url,
+      caption: text,
+      reply_markup: replyMarkup,
+    };
+  } else if (post.thumbnail_url) {
+    method = "sendPhoto";
+    body = {
+      chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
+      photo: post.thumbnail_url,
+      caption: text,
+      reply_markup: replyMarkup,
+    };
   }
 
-  return body.result?.message_id ?? null;
+  const response = await fetch(apiUrl(method), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const responseBody = (await response.json()) as TelegramResponse;
+  if (!response.ok || !responseBody.ok) {
+    throw new Error(responseBody.description ?? `Telegram ${method} failed with ${response.status}`);
+  }
+
+  return responseBody.result?.message_id ?? null;
 }
 
 export async function answerTelegramCallback(callbackQueryId: string, text: string) {
@@ -93,5 +116,26 @@ export async function editTelegramMessageText(chatId: number | string, messageId
   const body = (await response.json()) as TelegramResponse;
   if (!response.ok || !body.ok) {
     throw new Error(body.description ?? `Telegram editMessageText failed with ${response.status}`);
+  }
+}
+
+export async function editTelegramMessageCaption(chatId: number | string, messageId: number, caption: string) {
+  if (!telegramEnabled()) {
+    return;
+  }
+
+  const response = await fetch(apiUrl("editMessageCaption"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      caption,
+    }),
+  });
+
+  const body = (await response.json()) as TelegramResponse;
+  if (!response.ok || !body.ok) {
+    throw new Error(body.description ?? `Telegram editMessageCaption failed with ${response.status}`);
   }
 }
