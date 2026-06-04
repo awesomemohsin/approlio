@@ -36,7 +36,7 @@ begin
   -- Ensure at least one profile exists
   if not exists (select 1 from public.profiles) then
     insert into public.profiles (name)
-    values ('Default Business')
+    values ('TEST')
     returning id into default_profile_id;
   else
     select id into default_profile_id from public.profiles limit 1;
