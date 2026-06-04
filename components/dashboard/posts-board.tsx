@@ -176,7 +176,7 @@ export default function PostsBoard({ title, description, defaultStatus, lockStat
               key={post.id}
               post={post}
               onSaveCaption={(caption) => patchPost(post.id, { edited_caption: caption })}
-              onApprove={() => patchPost(post.id, { status: "approved" })}
+              onApprove={(connectionIds) => patchPost(post.id, { status: "approved", connectionIds })}
               onReject={() => patchPost(post.id, { status: "rejected" })}
               onPublish={() => postAction(post.id, "publish")}
               onRetry={() => postAction(post.id, "retry")}

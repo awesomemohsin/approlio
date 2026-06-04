@@ -45,6 +45,35 @@ export type PublishLog = {
   created_at: string;
 };
 
+export type Connection = {
+  id: string;
+  name: string;
+  platform: SourcePlatform;
+  type: string;
+  platform_id: string;
+  token_data: Json;
+  active: boolean;
+  created_at: string;
+};
+
+export type PostDestination = {
+  id: string;
+  post_id: string;
+  connection_id: string;
+  status: PostStatus;
+  published_at: string | null;
+  published_response: Json | null;
+  last_error: string | null;
+  created_at: string;
+};
+
+export type Setting = {
+  key: string;
+  value: Json;
+  created_at: string;
+  updated_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -82,6 +111,39 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+      connections: {
+        Row: Connection;
+        Insert: Partial<Connection> & Pick<Connection, "name" | "platform" | "type" | "platform_id">;
+        Update: Partial<Connection>;
+        Relationships: [];
+      };
+      post_destinations: {
+        Row: PostDestination;
+        Insert: Partial<PostDestination> & Pick<PostDestination, "post_id" | "connection_id">;
+        Update: Partial<PostDestination>;
+        Relationships: [
+          {
+            foreignKeyName: "post_destinations_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "post_destinations_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "connections";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      settings: {
+        Row: Setting;
+        Insert: Partial<Setting> & Pick<Setting, "key" | "value">;
+        Update: Partial<Setting>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

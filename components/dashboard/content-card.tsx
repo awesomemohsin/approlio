@@ -15,9 +15,12 @@ import {
   Send,
   XCircle,
   Youtube,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import type { Json, Post, PostStatus, SourcePlatform } from "@/lib/supabase/types";
+import type { Json, Post, PostStatus, SourcePlatform, Connection } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export interface DashboardPost extends Post {
   sources?: {
@@ -29,7 +32,7 @@ export interface DashboardPost extends Post {
 interface ContentCardProps {
   post: DashboardPost;
   onSaveCaption?: (caption: string) => void | Promise<void>;
-  onApprove?: () => void | Promise<void>;
+  onApprove?: (connectionIds?: string[]) => void | Promise<void>;
   onReject?: () => void | Promise<void>;
   onPublish?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
@@ -88,6 +91,13 @@ export default function ContentCard({
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(post.edited_caption ?? post.original_caption ?? "");
   const [busy, setBusy] = useState(false);
+
+  // Destination selection modal state
+  const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [selectedConnections, setSelectedConnections] = useState<Record<string, boolean>>({});
+  const [loadingConnections, setLoadingConnections] = useState(false);
+
   const meta = statusMeta(post.status);
   const StatusIcon = meta.icon;
   const publishedId = responseLink(post.published_response);
@@ -110,6 +120,70 @@ export default function ContentCard({
       await onSaveCaption?.(editedContent);
       setIsEditing(false);
     });
+  }
+
+  async function handleApproveClick() {
+    setBusy(true);
+    try {
+      const settingsRes = await fetch("/api/settings");
+      let askForDestination = true;
+
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        if (settingsData.data && settingsData.data.ask_for_destination_on_approval !== undefined) {
+          askForDestination = settingsData.data.ask_for_destination_on_approval;
+        }
+      }
+
+      if (askForDestination) {
+        setLoadingConnections(true);
+        setIsApproveModalOpen(true);
+
+        const connRes = await fetch("/api/connections");
+        if (connRes.ok) {
+          const connData = await connRes.json();
+          const activeConns = (connData.data || []).filter((c: Connection) => c.active);
+          setConnections(activeConns);
+
+          // Select all active by default
+          const initialSelection: Record<string, boolean> = {};
+          activeConns.forEach((c: Connection) => {
+            initialSelection[c.id] = true;
+          });
+          setSelectedConnections(initialSelection);
+        } else {
+          toast.error("Failed to load active channels");
+        }
+        setLoadingConnections(false);
+      } else {
+        await run(() => onApprove?.());
+      }
+    } catch (error) {
+      console.error("Failed to process approval step:", error);
+      toast.error("An error occurred. Approving with default destinations.");
+      await run(() => onApprove?.());
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleConfirmApprove() {
+    const selectedIds = Object.keys(selectedConnections).filter(id => selectedConnections[id]);
+    setIsApproveModalOpen(false);
+
+    setBusy(true);
+    try {
+      await onApprove?.(selectedIds);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleConnectionCheck(id: string, checked: boolean) {
+    setSelectedConnections(prev => ({
+      ...prev,
+      [id]: checked
+    }));
   }
 
   return (
@@ -181,7 +255,7 @@ export default function ContentCard({
                 Edit
               </button>
             )}
-            <button disabled={busy} onClick={() => run(onApprove)} className="rounded-md bg-green-500/10 px-3 py-2 text-sm font-medium text-green-400 hover:bg-green-500/20 disabled:opacity-50">
+            <button disabled={busy} onClick={handleApproveClick} className="rounded-md bg-green-500/10 px-3 py-2 text-sm font-medium text-green-400 hover:bg-green-500/20 disabled:opacity-50">
               Approve
             </button>
             <button disabled={busy} onClick={() => run(onReject)} className="rounded-md bg-red-500/10 px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50">
@@ -204,6 +278,90 @@ export default function ContentCard({
           </button>
         )}
       </div>
+
+      {/* Destination Picker Modal */}
+      {isApproveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border w-full max-w-md rounded-xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-border">
+              <h3 className="text-lg font-bold text-foreground">Select Posting Destinations</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Choose the social media channels to queue this post to.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[300px] overflow-y-auto">
+              {loadingConnections ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground ml-2">Loading channels...</span>
+                </div>
+              ) : connections.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <AlertCircle className="w-8 h-8 text-amber-500 mb-2" />
+                  <p className="text-sm font-semibold text-foreground">No active channels connected</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                    Please configure active Facebook Pages or YouTube Channels in Settings first.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {connections.map((conn) => {
+                    const isFacebook = conn.platform === "facebook";
+                    const isChecked = !!selectedConnections[conn.id];
+
+                    return (
+                      <label
+                        key={conn.id}
+                        className={cn(
+                          "flex items-center justify-between p-3 rounded-lg border border-border cursor-pointer transition-all hover:bg-muted/10",
+                          isChecked ? "bg-muted/10 border-primary/50" : "bg-transparent"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => handleConnectionCheck(conn.id, e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary bg-background"
+                          />
+                          <div className="flex items-center gap-2">
+                            <span className={isFacebook ? "text-[#1877F2]" : "text-red-500"}>
+                              {isFacebook ? <Facebook className="w-4 h-4" /> : <Youtube className="w-4 h-4" />}
+                            </span>
+                            <span className="text-sm font-semibold text-foreground">{conn.name}</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold px-1.5 py-0.5 rounded border border-border">
+                          {conn.platform}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-border bg-muted/20">
+              <button
+                type="button"
+                onClick={() => setIsApproveModalOpen(false)}
+                className="px-4 py-2 rounded-md border border-border text-sm font-semibold hover:bg-muted transition-colors text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={connections.length === 0 || !Object.values(selectedConnections).some(Boolean)}
+                onClick={handleConfirmApprove}
+                className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+              >
+                Approve & Queue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }

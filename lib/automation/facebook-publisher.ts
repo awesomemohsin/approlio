@@ -6,28 +6,27 @@ function graphUrl(path: string) {
   return `https://graph.facebook.com/${graphVersion}/${path}`;
 }
 
-async function graphPost(path: string, params: Record<string, string>) {
-  const body = new URLSearchParams({
-    access_token: requiredEnv("META_PAGE_ACCESS_TOKEN"),
-    ...params,
-  });
-
-  const response = await fetch(graphUrl(path), {
-    method: "POST",
-    body,
-  });
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(JSON.stringify(payload));
-  }
-
-  return payload;
-}
-
-export async function publishToFacebook(post: Post) {
-  const pageId = requiredEnv("META_PAGE_ID");
+export async function publishToFacebookPage(post: Post, pageId: string, pageAccessToken: string) {
   const message = (post.edited_caption ?? post.original_caption ?? "").trim();
+
+  async function graphPost(path: string, params: Record<string, string>) {
+    const body = new URLSearchParams({
+      access_token: pageAccessToken,
+      ...params,
+    });
+
+    const response = await fetch(graphUrl(path), {
+      method: "POST",
+      body,
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(JSON.stringify(payload));
+    }
+
+    return payload;
+  }
 
   // 1. If we have a direct video file link, upload it as a native video
   if (post.video_url && !post.video_url.startsWith("blob:")) {
@@ -64,4 +63,10 @@ export async function publishToFacebook(post: Post) {
     message,
     link: post.source_url,
   });
+}
+
+export async function publishToFacebook(post: Post) {
+  const pageId = requiredEnv("META_PAGE_ID");
+  const pageAccessToken = requiredEnv("META_PAGE_ACCESS_TOKEN");
+  return publishToFacebookPage(post, pageId, pageAccessToken);
 }
