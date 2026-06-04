@@ -3,6 +3,7 @@ import { assertTelegramSecret } from "@/lib/api-auth";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { answerTelegramCallback, editTelegramMessageText } from "@/lib/automation/telegram";
 import { logAction } from "@/lib/automation/audit";
+import { publishPost } from "@/lib/automation/publish";
 import { jsonError } from "@/lib/route-utils";
 
 export const runtime = "nodejs";
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
     const status = action === "approve" ? "approved" : "rejected";
     const actor = callback.from?.username ? `telegram:${callback.from.username}` : `telegram:${callback.from?.id ?? "unknown"}`;
     const supabase = createSupabaseAdmin();
-    const { error } = await supabase.from("posts").update({ status }).eq("id", postId);
+    const { data: post, error } = await supabase.from("posts").update({ status }).eq("id", postId).select("*").single();
 
     if (error) {
       throw error;
@@ -59,6 +60,10 @@ export async function POST(request: NextRequest) {
 
     const alertMessage = action === "approve" ? "Post approved for publishing!" : "Post rejected.";
     await answerTelegramCallback(callback.id, alertMessage);
+
+    if (action === "approve" && post) {
+      await publishPost(post, actor);
+    }
 
     if (callback.message?.message_id && callback.message?.chat?.id) {
       const originalText = callback.message.text || "";
