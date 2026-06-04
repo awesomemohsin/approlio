@@ -55,15 +55,48 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
     caption || "(No caption detected)",
   ].filter(val => val !== "").join("\n");
 
-  const replyMarkup = {
+  let replyMarkup = {
     inline_keyboard: [
       [
-        { text: "Approve", callback_data: `approve:${post.id}` },
-        { text: "Reject", callback_data: `reject:${post.id}` },
+        { text: "Approve to All", callback_data: "approve:all" },
+        { text: "Reject", callback_data: "reject" },
       ],
       [{ text: "View Review Panel", url: reviewUrl }],
     ],
   };
+
+  try {
+    const supabase = createSupabaseAdmin();
+    const { data: activeConnections } = await supabase
+      .from("connections")
+      .select("id, name, platform")
+      .eq("profile_id", post.profile_id)
+      .eq("active", true);
+
+    if (activeConnections && activeConnections.length > 0) {
+      const keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+      
+      // Individual connection buttons
+      for (const c of activeConnections) {
+        keyboard.push([
+          { text: `Approve: ${c.name} (${c.platform})`, callback_data: `approve:${c.id}` }
+        ]);
+      }
+      
+      // All & Reject buttons
+      keyboard.push([
+        { text: "Approve to All", callback_data: "approve:all" },
+        { text: "Reject", callback_data: "reject" }
+      ]);
+      
+      // Review Link
+      keyboard.push([{ text: "View Review Panel", url: reviewUrl }]);
+      
+      replyMarkup = { inline_keyboard: keyboard };
+    }
+  } catch (err) {
+    console.error("Failed to load active connections for Telegram markup:", err);
+  }
 
   let method = "sendMessage";
   let body: Record<string, unknown> = {
