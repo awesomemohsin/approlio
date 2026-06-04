@@ -29,13 +29,28 @@ export async function publishToFacebook(post: Post) {
   const pageId = requiredEnv("META_PAGE_ID");
   const message = (post.edited_caption ?? post.original_caption ?? "").trim();
 
-  if (post.video_url) {
+  // 1. If we have a direct video file link, upload it as a native video
+  if (post.video_url && !post.video_url.startsWith("blob:")) {
     return graphPost(`${pageId}/videos`, {
       file_url: post.video_url,
       description: message,
     });
   }
 
+  // 2. If it's a video/reel by URL, publish it as a link so Facebook embeds the player natively
+  const isVideoUrl = 
+    post.source_url.includes("/videos/") || 
+    post.source_url.includes("/watch") || 
+    post.source_url.includes("/reel/");
+
+  if (isVideoUrl) {
+    return graphPost(`${pageId}/feed`, {
+      message,
+      link: post.source_url,
+    });
+  }
+
+  // 3. Otherwise, if it has a photo, publish it as a photo
   if (post.thumbnail_url) {
     return graphPost(`${pageId}/photos`, {
       url: post.thumbnail_url,
@@ -44,6 +59,7 @@ export async function publishToFacebook(post: Post) {
     });
   }
 
+  // 4. Default to standard feed link post
   return graphPost(`${pageId}/feed`, {
     message,
     link: post.source_url,

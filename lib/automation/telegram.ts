@@ -22,9 +22,15 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
   if (reviewUrl.includes("localhost") || reviewUrl.includes("127.0.0.1")) {
     reviewUrl = `https://example.com/dashboard/review/${post.id}`;
   }
+
+  const isVideo = 
+    post.source_url?.includes("/videos/") || 
+    post.source_url?.includes("/watch") || 
+    post.source_url?.includes("/reel/");
+
   const caption = (post.original_caption ?? "").slice(0, 700);
   const text = [
-    "New Facebook Post Detected",
+    isVideo ? "🎥 New Facebook Video/Reel Detected" : "📸 New Facebook Post Detected",
     "",
     `Source: ${source?.name ?? post.platform}`,
     "",
@@ -50,7 +56,7 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
     reply_markup: replyMarkup,
   };
 
-  if (post.video_url) {
+  if (post.video_url && !post.video_url.startsWith("blob:")) {
     method = "sendVideo";
     body = {
       chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
