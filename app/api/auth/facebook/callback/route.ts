@@ -71,9 +71,17 @@ export async function GET(request: NextRequest) {
     const accountsResponse = await fetch(accountsUrl.toString());
     const accountsData = await accountsResponse.json();
 
-    if (!accountsResponse.ok) {
-      throw new Error(accountsData.error?.message || "Failed to retrieve Facebook Pages");
+    // Debug logging for permissions and accounts
+    try {
+      const permUrl = new URL(`https://graph.facebook.com/${graphVersion}/me/permissions`);
+      permUrl.searchParams.set("access_token", longLivedUserToken);
+      const permResponse = await fetch(permUrl.toString());
+      const permData = await permResponse.json();
+      console.log("Facebook OAuth Debug - Granted Permissions:", JSON.stringify(permData));
+    } catch (e) {
+      console.error("Facebook OAuth Debug - Failed to fetch permissions:", e);
     }
+    console.log("Facebook OAuth Debug - Accounts Response:", JSON.stringify(accountsData));
 
     const pages = accountsData.data || [];
     if (pages.length === 0) {

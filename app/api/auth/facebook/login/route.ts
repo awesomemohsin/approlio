@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const { graphVersion } = publishConfig();
   const redirectUri = `${siteUrl()}/api/auth/facebook/callback`;
-  const scope = "pages_show_list,pages_read_engagement,pages_manage_posts,public_profile";
+  const scope = "pages_show_list,pages_read_engagement,pages_manage_posts,public_profile,business_management";
 
   const authUrl = new URL(`https://www.facebook.com/${graphVersion}/dialog/oauth`);
   authUrl.searchParams.set("client_id", clientId);
