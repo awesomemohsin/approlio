@@ -21,12 +21,12 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
 
   let reviewUrl = `${siteUrl()}/dashboard/review/${post.id}`;
   if (reviewUrl.includes("localhost") || reviewUrl.includes("127.0.0.1")) {
-    reviewUrl = `https://example.com/dashboard/review/${post.id}`;
+    reviewUrl = `https://approlio.vercel.app/dashboard/review/${post.id}`;
   }
 
-  const isVideo = 
-    post.source_url?.includes("/videos/") || 
-    post.source_url?.includes("/watch") || 
+  const isVideo =
+    post.source_url?.includes("/videos/") ||
+    post.source_url?.includes("/watch") ||
     post.source_url?.includes("/reel/");
 
   // Fetch workspace profile name
@@ -78,23 +78,23 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
         | { text: string; callback_data: string }[]
         | { text: string; url: string }[]
       > = [];
-      
+
       // Individual connection buttons
       for (const c of activeConnections) {
         keyboard.push([
           { text: `Approve: ${c.name} (${c.platform})`, callback_data: `approve:${c.id}` }
         ]);
       }
-      
+
       // All & Reject buttons
       keyboard.push([
         { text: "Approve to All", callback_data: "approve:all" },
         { text: "Reject", callback_data: "reject" }
       ]);
-      
+
       // Review Link
       keyboard.push([{ text: "View Review Panel", url: reviewUrl }]);
-      
+
       replyMarkup = { inline_keyboard: keyboard };
     }
   } catch (err) {
@@ -108,6 +108,45 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
     disable_web_page_preview: false,
     reply_markup: replyMarkup,
   };
+
+  if (post.additional_images && post.additional_images.length > 1) {
+    const media = post.additional_images.slice(0, 10).map((imgUrl, index) => ({
+      type: "photo" as const,
+      media: imgUrl,
+      caption: index === 0 ? text : undefined,
+    }));
+
+    const mediaResponse = await fetch(apiUrl("sendMediaGroup"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
+        media,
+      }),
+    });
+
+    const mediaResult = (await mediaResponse.json()) as TelegramResponse;
+    if (!mediaResponse.ok || !mediaResult.ok) {
+      throw new Error(mediaResult.description ?? `Telegram sendMediaGroup failed with ${mediaResponse.status}`);
+    }
+
+    const controlResponse = await fetch(apiUrl("sendMessage"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: requiredEnv("TELEGRAM_CHAT_ID"),
+        text: "👇 Approve or reject this post:",
+        reply_markup: replyMarkup,
+      }),
+    });
+
+    const controlResult = (await controlResponse.json()) as TelegramResponse;
+    if (!controlResponse.ok || !controlResult.ok) {
+      throw new Error(controlResult.description ?? `Telegram sendMessage for control buttons failed with ${controlResponse.status}`);
+    }
+
+    return controlResult.result?.message_id ?? null;
+  }
 
   if (post.video_url && !post.video_url.startsWith("blob:")) {
     method = "sendVideo";

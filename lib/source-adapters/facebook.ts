@@ -82,54 +82,35 @@ export class FacebookAdapter implements SourceAdapter {
         await page.waitForTimeout(1500);
       }
 
-      const rawPosts = (await page.evaluate(`(() => {
-        const anchors = [...document.querySelectorAll("a[href]")];
-        const postLinks = anchors
-          .filter((anchor) => {
-            const href = anchor.href;
-            const text = anchor.textContent?.trim() || "";
-            const label = anchor.getAttribute("aria-label") || "";
-            
-            const isPostPattern = ["/posts/", "/videos/", "/reel/", "story_fbid=", "fbid=", "/watch"].some((needle) =>
-              href.includes(needle)
-            );
-            if (!isPostPattern) return false;
+      let evaluatedPosts: Array<{
+        cleanedUrl: string;
+        id: string;
+        text: string;
+        images: string[];
+        video: string | null;
+        publishedAt: string | null;
+      }> = [];
 
-            if (anchor.tabIndex === -1) return false;
-            if (label.toLowerCase().includes("profile") || label.toLowerCase().includes("cover")) return false;
-            if (!text && !label) return false;
+      const hasArticles = await page.evaluate(() => {
+        return document.querySelectorAll('div[role="article"]').length > 0;
+      });
 
-            return true;
-          })
-          .map((anchor) => anchor.href);
+      if (hasArticles) {
+        evaluatedPosts = (await page.evaluate(`(() => {
+          const articles = [...document.querySelectorAll('div[role="article"]')].filter(el => {
+            return !el.parentElement.closest('div[role="article"]');
+          });
 
-        return { postLinks };
-      })()`)) as { postLinks: string[] };
-
-      // Parse IDs and clean URLs first
-      const parsedCandidates = rawPosts.postLinks
-        .map((rawHref) => {
-          const id = extractFacebookId(rawHref);
-          const cleanedUrl = cleanFacebookUrl(rawHref, id);
-          return { rawHref, id, cleanedUrl };
-        })
-        .filter((c) => c.id !== c.rawHref);
-
-      // Deduplicate by cleaned URL
-      const uniquePostsMap = new Map<string, typeof parsedCandidates[0]>();
-      for (const item of parsedCandidates) {
-        if (!uniquePostsMap.has(item.cleanedUrl)) {
-          uniquePostsMap.set(item.cleanedUrl, item);
-        }
-      }
-      
-      const uniquePosts = [...uniquePostsMap.values()].slice(0, maxPostsPerSource);
-
-      const evaluatedPosts = (await page.evaluate(
-        `(() => {
-          const uniqueList = ${JSON.stringify(uniquePosts)};
-          const allRawPostLinks = ${JSON.stringify(rawPosts.postLinks)};
-          const anchors = [...document.querySelectorAll("a[href]")];
+          const getUrlScore = (href) => {
+            if (href.includes("/posts/")) return 10;
+            if (href.includes("/videos/")) return 9;
+            if (href.includes("/reel/")) return 8;
+            if (href.includes("story_fbid=")) return 7;
+            if (href.includes("/watch")) return 6;
+            if (href.includes("/photo/")) return 5;
+            if (href.includes("fbid=")) return 4;
+            return 0;
+          };
 
           const extractId = (href) => {
             const patterns = [
@@ -158,52 +139,29 @@ export class FacebookAdapter implements SourceAdapter {
             return raw;
           };
 
-          return uniqueList.map(({ rawHref, cleanedUrl, id }) => {
-            const anchor = anchors.find((candidate) => candidate.href === rawHref);
-            if (!anchor) {
-              return { cleanedUrl, id, text: "", image: null, video: null, publishedAt: null };
-            }
+          return articles.map((article) => {
+            const anchors = [...article.querySelectorAll("a[href]")].filter((anchor) => {
+              const href = anchor.href;
+              const label = anchor.getAttribute("aria-label") || "";
+              
+              const isPostPattern = ["/posts/", "/videos/", "/reel/", "story_fbid=", "fbid=", "/watch", "/photo/"].some((needle) =>
+                href.includes(needle)
+              );
+              if (!isPostPattern) return false;
+              if (anchor.tabIndex === -1) return false;
+              if (label.toLowerCase().includes("profile") || label.toLowerCase().includes("cover")) return false;
+              return true;
+            });
 
-            // Walk up to find the bounding post container
-            let current = anchor.parentElement;
-            let bestContainer = current;
-            let currentText = current ? current.textContent : "";
-            let stableCount = 0;
+            if (anchors.length === 0) return null;
 
-            while (current && current.tagName !== "BODY" && current.tagName !== "HTML") {
-              const nextText = current.textContent || "";
-              if (nextText.length > currentText.length + 10) {
-                bestContainer = current;
-                currentText = nextText;
-                stableCount = 0;
-              } else {
-                stableCount++;
-              }
+            anchors.sort((a, b) => getUrlScore(b.href) - getUrlScore(a.href));
+            const primaryAnchor = anchors[0];
+            const rawHref = primaryAnchor.href;
+            const id = extractId(rawHref);
+            const cleanedUrl = cleanUrl(rawHref, id);
 
-              const otherAnchors = [...current.querySelectorAll("a[href]")].filter((a) => {
-                if (!allRawPostLinks.includes(a.href)) return false;
-                const otherId = extractId(a.href);
-                const otherCleaned = cleanUrl(a.href, otherId);
-                return otherCleaned !== cleanedUrl;
-              });
-
-              if (otherAnchors.length > 0) {
-                break;
-              }
-
-              if (stableCount >= 4) {
-                break;
-              }
-
-              current = current.parentElement;
-            }
-
-            if (!bestContainer) {
-              return { cleanedUrl, id, text: "", image: null, video: null, publishedAt: null };
-            }
-
-            // Try to extract clean text using div[dir="auto"] first, otherwise fallback to textContent
-            const textNodes = [...bestContainer.querySelectorAll('div[dir="auto"]')];
+            const textNodes = [...article.querySelectorAll('div[dir="auto"]')];
             let text = "";
             if (textNodes.length > 0) {
               const textBlocks = textNodes.map((el) => el.textContent?.trim()).filter(Boolean);
@@ -223,49 +181,232 @@ export class FacebookAdapter implements SourceAdapter {
                     break;
                   }
                 }
-                if (!isDuplicate) {
-                  uniqueBlocks.push(block);
-                }
+                if (!isDuplicate) uniqueBlocks.push(block);
               }
               text = uniqueBlocks.join("\\n");
             } else {
-              text = bestContainer.textContent?.replace(/\\s+/g, " ").trim() ?? "";
+              text = article.textContent?.replace(/\\s+/g, " ").trim() ?? "";
             }
 
-            const images = [...bestContainer.querySelectorAll("img")]
+            const images = [...article.querySelectorAll("img")]
               .map((img) => img.src)
               .filter(
                 (src) =>
                   src &&
-                  !src.includes("/images/emoji/") &&
+                  !src.includes("/images/emoji") &&
+                  !src.includes("emoji.php") &&
                   !src.includes("rsrc.php") &&
                   !src.includes("profile") &&
                   !src.startsWith("data:")
               );
 
-            const videos = [...bestContainer.querySelectorAll("video")].map((vid) => vid.src).filter(Boolean);
-
-            const timeEl = bestContainer.querySelector("time[datetime]");
+            const videos = [...article.querySelectorAll("video")].map((vid) => vid.src).filter(Boolean);
+            const timeEl = article.querySelector("time[datetime]");
             const publishedAt = timeEl ? timeEl.getAttribute("datetime") : null;
 
             return {
               cleanedUrl,
               id,
               text,
-              image: images[0] || null,
+              images,
               video: videos[0] || null,
               publishedAt,
             };
-          });
-        })()`
-      )) as Array<{
-        cleanedUrl: string;
-        id: string;
-        text: string;
-        image: string | null;
-        video: string | null;
-        publishedAt: string | null;
-      }>;
+          }).filter(Boolean);
+        })()`)) as Array<{
+          cleanedUrl: string;
+          id: string;
+          text: string;
+          images: string[];
+          video: string | null;
+          publishedAt: string | null;
+        }>;
+      } else {
+        const rawPosts = (await page.evaluate(`(() => {
+          const anchors = [...document.querySelectorAll("a[href]")];
+          const postLinks = anchors
+            .filter((anchor) => {
+              const href = anchor.href;
+              const text = anchor.textContent?.trim() || "";
+              const label = anchor.getAttribute("aria-label") || "";
+              
+              const isPostPattern = ["/posts/", "/videos/", "/reel/", "story_fbid=", "fbid=", "/watch"].some((needle) =>
+                href.includes(needle)
+              );
+              if (!isPostPattern) return false;
+
+              if (anchor.tabIndex === -1) return false;
+              if (label.toLowerCase().includes("profile") || label.toLowerCase().includes("cover")) return false;
+              if (!text && !label) return false;
+
+              return true;
+            })
+            .map((anchor) => anchor.href);
+
+          return { postLinks };
+        })()`)) as { postLinks: string[] };
+
+        const parsedCandidates = rawPosts.postLinks
+          .map((rawHref) => {
+            const id = extractFacebookId(rawHref);
+            const cleanedUrl = cleanFacebookUrl(rawHref, id);
+            return { rawHref, id, cleanedUrl };
+          })
+          .filter((c) => c.id !== c.rawHref);
+
+        const uniquePostsMap = new Map<string, typeof parsedCandidates[0]>();
+        for (const item of parsedCandidates) {
+          if (!uniquePostsMap.has(item.cleanedUrl)) {
+            uniquePostsMap.set(item.cleanedUrl, item);
+          }
+        }
+        
+        const uniquePosts = [...uniquePostsMap.values()].slice(0, maxPostsPerSource);
+
+        evaluatedPosts = (await page.evaluate(
+          `(() => {
+            const uniqueList = \${JSON.stringify(uniquePosts)};
+            const allRawPostLinks = \${JSON.stringify(rawPosts.postLinks)};
+            const anchors = [...document.querySelectorAll("a[href]")];
+
+            const extractId = (href) => {
+              const patterns = [
+                /\\\\/posts\\\\/([^/?#]+)/i,
+                /\\\\/videos\\\\/([^/?#]+)/i,
+                /\\\\/reel\\\\/([^/?#]+)/i,
+                /fbid=([^&#]+)/i,
+                /story_fbid=([^&#]+)/i,
+                /watch\\\\/?\\\\?v=([^&#]+)/i,
+              ];
+              for (const p of patterns) {
+                const m = href.match(p);
+                if (m && m[1]) return decodeURIComponent(m[1]);
+              }
+              return href;
+            };
+
+            const cleanUrl = (raw, id) => {
+              if (raw.includes("/posts/")) return "https://www.facebook.com/posts/" + id;
+              if (raw.includes("/videos/")) return "https://www.facebook.com/videos/" + id;
+              if (raw.includes("/reel/")) return "https://www.facebook.com/reel/" + id;
+              if (raw.includes("/watch")) return "https://www.facebook.com/watch/?v=" + id;
+              if (raw.includes("/photo/") || raw.includes("fbid=") || raw.includes("story_fbid=")) {
+                return "https://www.facebook.com/photo/?fbid=" + id;
+              }
+              return raw;
+            };
+
+            return uniqueList.map(({ rawHref, cleanedUrl, id }) => {
+              const anchor = anchors.find((candidate) => candidate.href === rawHref);
+              if (!anchor) {
+                return { cleanedUrl, id, text: "", image: null, video: null, publishedAt: null };
+              }
+
+              let current = anchor.parentElement;
+              let bestContainer = current;
+              let currentText = current ? current.textContent : "";
+              let stableCount = 0;
+
+              while (current && current.tagName !== "BODY" && current.tagName !== "HTML") {
+                const nextText = current.textContent || "";
+                if (nextText.length > currentText.length + 10) {
+                  bestContainer = current;
+                  currentText = nextText;
+                  stableCount = 0;
+                } else {
+                  stableCount++;
+                }
+
+                const otherAnchors = [...current.querySelectorAll("a[href]")].filter((a) => {
+                  if (!allRawPostLinks.includes(a.href)) return false;
+                  const otherId = extractId(a.href);
+                  const otherCleaned = cleanUrl(a.href, otherId);
+                  return otherCleaned !== cleanedUrl;
+                });
+
+                if (otherAnchors.length > 0) {
+                  break;
+                }
+
+                if (stableCount >= 4) {
+                  break;
+                }
+
+                current = current.parentElement;
+              }
+
+              if (!bestContainer) {
+                return { cleanedUrl, id, text: "", image: null, video: null, publishedAt: null };
+              }
+
+              const textNodes = [...bestContainer.querySelectorAll('div[dir="auto"]')];
+              let text = "";
+              if (textNodes.length > 0) {
+                const textBlocks = textNodes.map((el) => el.textContent?.trim()).filter(Boolean);
+                const uniqueBlocks = [];
+                for (const block of textBlocks) {
+                  const cleanBlock = block.replace(/\\\\s+/g, "").toLowerCase();
+                  let isDuplicate = false;
+                  for (let i = 0; i < uniqueBlocks.length; i++) {
+                    const existing = uniqueBlocks[i];
+                    const cleanExisting = existing.replace(/\\\\s+/g, "").toLowerCase();
+                    if (cleanBlock.includes(cleanExisting)) {
+                      uniqueBlocks[i] = block;
+                      isDuplicate = true;
+                      break;
+                    } else if (cleanExisting.includes(cleanBlock)) {
+                      isDuplicate = true;
+                      break;
+                    }
+                  }
+                  if (!isDuplicate) {
+                    uniqueBlocks.push(block);
+                  }
+                }
+                text = uniqueBlocks.join("\\\\n");
+              } else {
+                text = bestContainer.textContent?.replace(/\\\\s+/g, " ").trim() ?? "";
+              }
+
+              const images = [...bestContainer.querySelectorAll("img")]
+                .map((img) => img.src)
+                .filter(
+                  (src) =>
+                    src &&
+                    !src.includes("/images/emoji") &&
+                    !src.includes("emoji.php") &&
+                    !src.includes("rsrc.php") &&
+                    !src.includes("profile") &&
+                    !src.startsWith("data:")
+                );
+
+              const videos = [...bestContainer.querySelectorAll("video")].map((vid) => vid.src).filter(Boolean);
+
+              const timeEl = bestContainer.querySelector("time[datetime]");
+              const publishedAt = timeEl ? timeEl.getAttribute("datetime") : null;
+
+              return {
+                cleanedUrl,
+                id,
+                text,
+                images,
+                video: videos[0] || null,
+                publishedAt,
+              };
+            });
+          })()`
+        )) as Array<{
+          cleanedUrl: string;
+          id: string;
+          text: string;
+          images: string[];
+          video: string | null;
+          publishedAt: string | null;
+        }>;
+      }
+
+      // Slice to maxPostsPerSource
+      evaluatedPosts = evaluatedPosts.slice(0, maxPostsPerSource);
 
       // Extract the video mapping from page content to resolve direct MP4 CDN URLs
       const html = await page.content();
@@ -285,15 +426,53 @@ export class FacebookAdapter implements SourceAdapter {
         }
       }
 
+      // Helper to extract high-resolution viewer_image URL from cleanHtml
+      const extractHighResUrl = (imgUrl: string) => {
+        try {
+          const parts = imgUrl.split("/");
+          const filename = parts[parts.length - 1] || "";
+          
+          // Match 10-18 digit photo ID either between underscores or at the start
+          const matchDigits = filename.match(/_(\d{10,18})_/);
+          let photoId = matchDigits?.[1];
+          if (!photoId) {
+            const matchStart = filename.match(/^(\d{10,18})_/);
+            photoId = matchStart?.[1];
+          }
+
+          if (!photoId) {
+            return imgUrl;
+          }
+
+          const escapedPhotoId = photoId.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+          const pattern = new RegExp(
+            `"viewer_image"\\s*:\\s*\\{[^}]*?"uri"\\s*:\\s*"([^"]*?${escapedPhotoId}[^"]*?)"`,
+            "i"
+          );
+
+          const m = cleanHtml.match(pattern);
+          if (m?.[1]) {
+            return m[1];
+          }
+        } catch (e) {
+          // Fall back to original URL on error
+        }
+        return imgUrl;
+      };
+
       return evaluatedPosts.map((post) => {
         const directVideoUrl = videoMap.get(post.id) || null;
+        const highResImages = post.images.map((img) => extractHighResUrl(img));
+        const highResThumbnail = highResImages[0] || null;
+
         return {
           sourcePostId: stablePostId("facebook", post.id),
           sourceUrl: post.cleanedUrl,
           platform: "facebook",
           caption: cleanPostText(post.text).slice(0, 4000) || null,
-          thumbnailUrl: post.image,
+          thumbnailUrl: highResThumbnail,
           videoUrl: directVideoUrl || post.video,
+          additionalImages: highResImages,
           publishedAt: post.publishedAt,
         };
       });

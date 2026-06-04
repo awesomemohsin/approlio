@@ -31,6 +31,7 @@ export type Post = {
   platform: SourcePlatform;
   thumbnail_url: string | null;
   video_url: string | null;
+  additional_images: string[] | null;
   original_caption: string | null;
   edited_caption: string | null;
   status: PostStatus;

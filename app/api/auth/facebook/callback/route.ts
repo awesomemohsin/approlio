@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
           },
           active: true,
         }, {
-          onConflict: "platform,platform_id"
+          onConflict: "profile_id,platform,platform_id"
         });
 
       if (upsertError) {

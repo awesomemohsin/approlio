@@ -34,6 +34,28 @@ async function importPost(source: Source, post: NormalizedSourcePost) {
     return { imported: false, postId: existing.id };
   }
 
+  let finalCaption = post.caption || "";
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("name")
+      .eq("id", source.profile_id)
+      .single();
+
+    if (profile?.name === "Parle Bangladesh") {
+      const footer = "Order Now: https://parlebangladesh.com";
+      if (finalCaption) {
+        if (!finalCaption.includes(footer)) {
+          finalCaption = `${finalCaption}\n${footer}`;
+        }
+      } else {
+        finalCaption = footer;
+      }
+    }
+  } catch (err) {
+    logger.error("failed_to_append_parle_bangladesh_footer", { error: err });
+  }
+
   const { data: inserted, error } = await supabase
     .from("posts")
     .insert({
@@ -44,8 +66,9 @@ async function importPost(source: Source, post: NormalizedSourcePost) {
       platform: post.platform,
       thumbnail_url: post.thumbnailUrl,
       video_url: post.videoUrl,
-      original_caption: post.caption,
-      edited_caption: post.caption,
+      additional_images: post.additionalImages || [],
+      original_caption: finalCaption || null,
+      edited_caption: finalCaption || null,
       status: "pending",
       source_published_at: normalizePublishedAt(post.publishedAt),
     })

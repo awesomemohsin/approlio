@@ -49,7 +49,31 @@ export async function publishToFacebookPage(post: Post, pageId: string, pageAcce
     });
   }
 
-  // 3. Otherwise, if it has a photo, publish it as a photo
+  // 3. If it has multiple photos, upload each unpublished photo first and link them via attached_media
+  if (post.additional_images && post.additional_images.length > 1) {
+    const photoIds: string[] = [];
+    for (const imageUrl of post.additional_images) {
+      const res = await graphPost(`${pageId}/photos`, {
+        url: imageUrl,
+        published: "false",
+      });
+      if (res.id) {
+        photoIds.push(res.id);
+      }
+    }
+
+    if (photoIds.length > 0) {
+      const params: Record<string, string> = {
+        message,
+      };
+      photoIds.forEach((id, index) => {
+        params[`attached_media[${index}]`] = JSON.stringify({ media_fbid: id });
+      });
+      return graphPost(`${pageId}/feed`, params);
+    }
+  }
+
+  // 4. Otherwise, if it has a single photo, publish it as a photo
   if (post.thumbnail_url) {
     return graphPost(`${pageId}/photos`, {
       url: post.thumbnail_url,

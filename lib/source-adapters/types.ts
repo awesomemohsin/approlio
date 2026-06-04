@@ -7,6 +7,7 @@ export interface NormalizedSourcePost {
   caption: string | null;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  additionalImages?: string[] | null;
   publishedAt: string | null;
 }
 
