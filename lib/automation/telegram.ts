@@ -74,7 +74,10 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
       .eq("active", true);
 
     if (activeConnections && activeConnections.length > 0) {
-      const keyboard: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+      const keyboard: Array<
+        | { text: string; callback_data: string }[]
+        | { text: string; url: string }[]
+      > = [];
       
       // Individual connection buttons
       for (const c of activeConnections) {
