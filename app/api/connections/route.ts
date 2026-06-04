@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireDashboardUser, jsonError } from "@/lib/route-utils";
+import { requireDashboardUser, getRequiredProfileId, jsonError } from "@/lib/route-utils";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireDashboardUser();
+    const profileId = getRequiredProfileId(request);
     const supabase = createSupabaseAdmin();
     const { data, error } = await supabase
       .from("connections")
       .select("*")
+      .eq("profile_id", profileId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -26,6 +28,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     await requireDashboardUser();
+    const profileId = getRequiredProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -39,6 +42,7 @@ export async function PATCH(request: NextRequest) {
       .from("connections")
       .update({ active })
       .eq("id", id)
+      .eq("profile_id", profileId)
       .select("*")
       .single();
 
@@ -55,6 +59,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     await requireDashboardUser();
+    const profileId = getRequiredProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -66,7 +71,8 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase
       .from("connections")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("profile_id", profileId);
 
     if (error) {
       throw error;

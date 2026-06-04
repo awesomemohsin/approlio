@@ -7,10 +7,15 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const errorParam = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
+  const profileId = searchParams.get("state");
 
   if (errorParam || errorDescription) {
     const errorMsg = errorDescription || errorParam || "Facebook auth failed";
     return NextResponse.redirect(`${siteUrl()}/dashboard/settings?error=${encodeURIComponent(errorMsg)}`);
+  }
+
+  if (!profileId) {
+    return NextResponse.redirect(`${siteUrl()}/dashboard/settings?error=Workspace+profile_id+is+missing`);
   }
 
   if (!code) {
@@ -88,6 +93,7 @@ export async function GET(request: NextRequest) {
       const { error: upsertError } = await supabase
         .from("connections")
         .upsert({
+          profile_id: profileId,
           name: pageName,
           platform: "facebook",
           type: "facebook_page",

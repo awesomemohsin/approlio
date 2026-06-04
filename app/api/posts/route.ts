@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireDashboardUser, jsonError } from "@/lib/route-utils";
+import { requireDashboardUser, getRequiredProfileId, jsonError } from "@/lib/route-utils";
 import type { PostStatus, SourcePlatform } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
@@ -19,8 +19,12 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
+    const profileId = getRequiredProfileId(request);
     const supabase = createSupabaseAdmin();
-    let query = supabase.from("posts").select("*, sources(name,url)", { count: "exact" });
+    let query = supabase
+      .from("posts")
+      .select("*, sources(name,url)", { count: "exact" })
+      .eq("profile_id", profileId);
 
     if (status) {
       query = query.eq("status", status);

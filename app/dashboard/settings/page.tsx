@@ -18,6 +18,7 @@ import {
   Loader2
 } from "lucide-react";
 import { Connection } from "@/lib/supabase/types";
+import { useProfiles } from "@/components/providers/profile-provider";
 
 // Runtime checks (mocked or checks environment variables if exposed, or static status)
 const checks = [
@@ -62,6 +63,7 @@ const checks = [
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { activeProfile } = useProfiles();
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [askForDestination, setAskForDestination] = useState<boolean>(true);
@@ -228,7 +230,7 @@ function SettingsContent() {
             {/* Connect Buttons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <a
-                href="/api/auth/facebook/login"
+                href={`/api/auth/facebook/login?profile_id=${activeProfile?.id || ""}`}
                 className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-border bg-[#1877F2]/10 hover:bg-[#1877F2]/20 text-[#1877F2] font-semibold transition-all hover:scale-[1.01]"
               >
                 <Facebook className="w-5 h-5 fill-current" />
@@ -236,7 +238,7 @@ function SettingsContent() {
               </a>
 
               <a
-                href="/api/auth/youtube/login"
+                href={`/api/auth/youtube/login?profile_id=${activeProfile?.id || ""}`}
                 className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-border bg-red-600/10 hover:bg-red-600/20 text-red-500 font-semibold transition-all hover:scale-[1.01]"
               >
                 <Youtube className="w-5 h-5 fill-current" />

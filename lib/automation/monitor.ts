@@ -37,6 +37,7 @@ async function importPost(source: Source, post: NormalizedSourcePost) {
   const { data: inserted, error } = await supabase
     .from("posts")
     .insert({
+      profile_id: source.profile_id,
       source_id: source.id,
       source_post_id: post.sourcePostId,
       source_url: post.sourceUrl,

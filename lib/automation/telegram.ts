@@ -1,5 +1,6 @@
 import { requiredEnv, siteUrl, telegramEnabled } from "@/lib/env";
 import type { Post, Source } from "@/lib/supabase/types";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 interface TelegramResponse {
   ok: boolean;
@@ -28,15 +29,31 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
     post.source_url?.includes("/watch") || 
     post.source_url?.includes("/reel/");
 
+  // Fetch workspace profile name
+  let profileName = "";
+  try {
+    const supabase = createSupabaseAdmin();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("name")
+      .eq("id", post.profile_id)
+      .single();
+    if (profile) {
+      profileName = profile.name;
+    }
+  } catch (err) {
+    console.error("Failed to fetch profile name for Telegram notification:", err);
+  }
+
   const caption = (post.original_caption ?? "").slice(0, 700);
   const text = [
     isVideo ? "🎥 New Facebook Video/Reel Detected" : "📸 New Facebook Post Detected",
-    "",
+    profileName ? `🏢 Workspace: ${profileName}` : "",
     `Source: ${source?.name ?? post.platform}`,
     "",
     "Caption Preview:",
     caption || "(No caption detected)",
-  ].join("\n");
+  ].filter(val => val !== "").join("\n");
 
   const replyMarkup = {
     inline_keyboard: [

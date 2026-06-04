@@ -3,8 +3,16 @@ export type PostStatus = "pending" | "approved" | "posted" | "rejected" | "faile
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
+export type Profile = {
+  id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
+};
+
 export type Source = {
   id: string;
+  profile_id: string;
   name: string;
   platform: SourcePlatform;
   url: string;
@@ -16,6 +24,7 @@ export type Source = {
 
 export type Post = {
   id: string;
+  profile_id: string;
   source_id: string | null;
   source_post_id: string;
   source_url: string;
@@ -47,6 +56,7 @@ export type PublishLog = {
 
 export type Connection = {
   id: string;
+  profile_id: string;
   name: string;
   platform: SourcePlatform;
   type: string;
@@ -68,6 +78,7 @@ export type PostDestination = {
 };
 
 export type Setting = {
+  profile_id: string;
   key: string;
   value: Json;
   created_at: string;
@@ -77,23 +88,43 @@ export type Setting = {
 export interface Database {
   public: {
     Tables: {
+      profiles: {
+        Row: Profile;
+        Insert: Partial<Profile> & Pick<Profile, "name">;
+        Update: Partial<Profile>;
+        Relationships: [];
+      };
       sources: {
         Row: Source;
-        Insert: Partial<Omit<Source, "id" | "created_at">> & Pick<Source, "name" | "platform" | "url">;
-        Update: Partial<Omit<Source, "id" | "created_at">>;
-        Relationships: [];
+        Insert: Partial<Source> & Pick<Source, "name" | "platform" | "url" | "profile_id">;
+        Update: Partial<Source>;
+        Relationships: [
+          {
+            foreignKeyName: "sources_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       posts: {
         Row: Post;
-        Insert: Partial<Omit<Post, "id" | "created_at">> &
-          Pick<Post, "source_post_id" | "source_url" | "platform">;
-        Update: Partial<Omit<Post, "id" | "created_at">>;
+        Insert: Partial<Post> & Pick<Post, "source_post_id" | "source_url" | "platform" | "profile_id">;
+        Update: Partial<Post>;
         Relationships: [
           {
             foreignKeyName: "posts_source_id_fkey";
             columns: ["source_id"];
             isOneToOne: false;
             referencedRelation: "sources";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "posts_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -114,9 +145,17 @@ export interface Database {
       };
       connections: {
         Row: Connection;
-        Insert: Partial<Connection> & Pick<Connection, "name" | "platform" | "type" | "platform_id">;
+        Insert: Partial<Connection> & Pick<Connection, "name" | "platform" | "type" | "platform_id" | "profile_id">;
         Update: Partial<Connection>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "connections_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       post_destinations: {
         Row: PostDestination;
@@ -141,9 +180,17 @@ export interface Database {
       };
       settings: {
         Row: Setting;
-        Insert: Partial<Setting> & Pick<Setting, "key" | "value">;
+        Insert: Partial<Setting> & Pick<Setting, "profile_id" | "key" | "value">;
         Update: Partial<Setting>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "settings_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: Record<string, never>;

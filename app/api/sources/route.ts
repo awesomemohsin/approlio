@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireDashboardUser, jsonError } from "@/lib/route-utils";
+import { requireDashboardUser, getRequiredProfileId, jsonError } from "@/lib/route-utils";
 
 export const runtime = "nodejs";
 
@@ -12,11 +12,16 @@ const sourceSchema = z.object({
   active: z.boolean().optional(),
 });
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireDashboardUser();
+    const profileId = getRequiredProfileId(request);
     const supabase = createSupabaseAdmin();
-    const { data, error } = await supabase.from("sources").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("sources")
+      .select("*")
+      .eq("profile_id", profileId)
+      .order("created_at", { ascending: false });
 
     if (error) {
       throw error;
@@ -31,9 +36,17 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireDashboardUser();
+    const profileId = getRequiredProfileId(request);
     const payload = sourceSchema.parse(await request.json());
     const supabase = createSupabaseAdmin();
-    const { data, error } = await supabase.from("sources").insert(payload).select("*").single();
+    const { data, error } = await supabase
+      .from("sources")
+      .insert({
+        ...payload,
+        profile_id: profileId,
+      })
+      .select("*")
+      .single();
 
     if (error) {
       throw error;

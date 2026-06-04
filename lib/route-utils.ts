@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export async function requireDashboardUser() {
@@ -13,6 +13,14 @@ export async function requireDashboardUser() {
   }
 
   return user;
+}
+
+export function getRequiredProfileId(request: NextRequest) {
+  const profileId = request.headers.get("x-profile-id");
+  if (!profileId) {
+    throw new Response("Missing x-profile-id header", { status: 400 });
+  }
+  return profileId;
 }
 
 export function jsonError(error: unknown) {

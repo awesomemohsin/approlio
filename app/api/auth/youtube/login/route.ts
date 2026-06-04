@@ -1,7 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { siteUrl } from "@/lib/env";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const profileId = searchParams.get("profile_id");
+
+  if (!profileId) {
+    return NextResponse.json(
+      { error: "Workspace profile_id is required to initiate YouTube login" },
+      { status: 400 }
+    );
+  }
+
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json(
@@ -20,6 +30,7 @@ export async function GET() {
   authUrl.searchParams.set("scope", scope);
   authUrl.searchParams.set("access_type", "offline");
   authUrl.searchParams.set("prompt", "consent");
+  authUrl.searchParams.set("state", profileId);
 
   return NextResponse.redirect(authUrl.toString());
 }
