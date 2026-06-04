@@ -12,7 +12,7 @@ export function assertCronRequest(request: NextRequest) {
 
 export function assertTelegramSecret(request: NextRequest) {
   const expected = requiredEnv("TELEGRAM_WEBHOOK_SECRET");
-  const actual = request.nextUrl.searchParams.get("secret");
+  const actual = request.nextUrl.searchParams.get("secret") || request.headers.get("x-telegram-bot-api-secret-token");
 
   if (actual !== expected) {
     throw new Response("Unauthorized", { status: 401 });
