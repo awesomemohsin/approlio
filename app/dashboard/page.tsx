@@ -1,11 +1,11 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
 import StatsCard from "@/components/dashboard/stats-card";
 import ActivityFeed from "@/components/dashboard/activity-feed";
 import Charts from "@/components/dashboard/charts";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { TrendingUp, Clock, CheckCircle2, AlertCircle } from "lucide-react";
-import type { Post } from "@/lib/supabase/types";
-
-export const dynamic = "force-dynamic";
+import { TrendingUp, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import type { Post, PublishLog } from "@/lib/supabase/types";
 
 function dayLabel(date: Date) {
   return date.toLocaleDateString("en-US", { weekday: "short" });
@@ -38,43 +38,50 @@ function buildPlatformData(posts: Post[]) {
   return Object.entries(counts).map(([platform, posts]) => ({ platform, posts }));
 }
 
-async function countRows(table: "sources" | "posts", filter?: { column: string; value: string }) {
-  const supabase = createSupabaseAdmin();
-  let query = supabase.from(table).select("*", { count: "exact", head: true });
-  if (filter) {
-    query = query.eq(filter.column, filter.value);
-  }
-  const { count, error } = await query;
-  if (error) {
-    throw error;
-  }
-  return count ?? 0;
+interface DashboardStats {
+  totalSources: number;
+  pendingApproval: number;
+  approvedContent: number;
+  failedPosts: number;
+  posts: Post[];
+  logs: PublishLog[];
 }
 
-export default async function DashboardPage() {
-  const supabase = createSupabaseAdmin();
-  const [totalSources, pendingApproval, approvedContent, failedPosts, recentPostsResult, recentLogsResult] =
-    await Promise.all([
-      countRows("sources"),
-      countRows("posts", { column: "status", value: "pending" }),
-      countRows("posts", { column: "status", value: "approved" }),
-      countRows("posts", { column: "status", value: "failed" }),
-      supabase.from("posts").select("*").order("created_at", { ascending: false }).limit(500),
-      supabase.from("publish_logs").select("*").order("created_at", { ascending: false }).limit(5),
-    ]);
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (recentPostsResult.error) {
-    throw recentPostsResult.error;
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const res = await fetch("/api/dashboard/stats");
+        if (!res.ok) throw new Error("Failed to fetch stats");
+        const body = await res.json();
+        setStats(body.data);
+      } catch (err) {
+        console.error("Dashboard stats load failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadStats();
+  }, []);
+
+  if (loading || !stats) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">Loading dashboard statistics...</span>
+        </div>
+      </div>
+    );
   }
 
-  if (recentLogsResult.error) {
-    throw recentLogsResult.error;
-  }
-
-  const stats = [
+  const statsCards = [
     {
       label: "Total Sources",
-      value: totalSources,
+      value: stats.totalSources,
       icon: TrendingUp,
       color: "from-blue-500/20 to-blue-600/20",
       trend: "Active monitor inputs",
@@ -82,7 +89,7 @@ export default async function DashboardPage() {
     },
     {
       label: "Pending Approval",
-      value: pendingApproval,
+      value: stats.pendingApproval,
       icon: Clock,
       color: "from-amber-500/20 to-amber-600/20",
       trend: "Waiting for review",
@@ -90,7 +97,7 @@ export default async function DashboardPage() {
     },
     {
       label: "Approved Content",
-      value: approvedContent,
+      value: stats.approvedContent,
       icon: CheckCircle2,
       color: "from-green-500/20 to-green-600/20",
       trend: "Ready to publish",
@@ -98,15 +105,13 @@ export default async function DashboardPage() {
     },
     {
       label: "Failed Posts",
-      value: failedPosts,
+      value: stats.failedPosts,
       icon: AlertCircle,
       color: "from-red-500/20 to-red-600/20",
       trend: "Retry queue",
       href: "/dashboard/failed",
     },
   ];
-
-  const posts = recentPostsResult.data ?? [];
 
   return (
     <div className="space-y-8">
@@ -116,17 +121,17 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
+        {statsCards.map((stat) => (
           <StatsCard key={stat.label} {...stat} />
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <Charts activityData={buildActivityData(posts)} platformData={buildPlatformData(posts)} />
+          <Charts activityData={buildActivityData(stats.posts)} platformData={buildPlatformData(stats.posts)} />
         </div>
         <div>
-          <ActivityFeed logs={recentLogsResult.data ?? []} />
+          <ActivityFeed logs={stats.logs} />
         </div>
       </div>
     </div>

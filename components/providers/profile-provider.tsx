@@ -21,6 +21,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [interceptorReady, setInterceptorReady] = useState(false);
 
   // 1. Fetch profiles on mount
   const loadProfiles = async () => {
@@ -63,8 +64,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       return originalFetch(input, { ...init, headers });
     };
 
+    setInterceptorReady(true);
+
     return () => {
       window.fetch = originalFetch;
+      setInterceptorReady(false);
     };
   }, [activeProfile?.id]);
 
@@ -153,7 +157,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     toast.success(`Workspace renamed to "${name}"`);
   };
 
-  if (loading) {
+  if (loading || !interceptorReady) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-2">
