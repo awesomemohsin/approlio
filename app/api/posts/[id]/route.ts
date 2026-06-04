@@ -37,6 +37,7 @@ export async function PATCH(
         const { data: activeConnections } = await supabase
           .from("connections")
           .select("id")
+          .eq("profile_id", data.profile_id)
           .eq("active", true);
         if (activeConnections) {
           targetConnectionIds = activeConnections.map((c) => c.id);

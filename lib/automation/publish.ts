@@ -101,12 +101,12 @@ export async function publishPost(post: Post, actor = "system") {
 
   let destinations = destinationsResult;
 
-  // 2. If no destinations exist, auto-insert active connections for this platform
+  // 2. If no destinations exist, auto-insert active connections for this profile
   if (!destinations || destinations.length === 0) {
     const { data: activeConnections } = await supabase
       .from("connections")
       .select("*")
-      .eq("platform", post.platform)
+      .eq("profile_id", post.profile_id)
       .eq("active", true);
 
     if (activeConnections && activeConnections.length > 0) {
