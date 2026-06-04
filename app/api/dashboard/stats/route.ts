@@ -45,8 +45,9 @@ export async function GET(request: NextRequest) {
         if (log.post_id && postIds.includes(log.post_id)) {
           return true;
         }
-        const responseObj = log.response as any;
-        if (responseObj?.source_id && sourceIds.includes(responseObj.source_id)) {
+        const responseObj = log.response as Record<string, unknown> | null;
+        const sourceId = responseObj?.source_id;
+        if (typeof sourceId === "string" && sourceIds.includes(sourceId)) {
           return true;
         }
         return false;
