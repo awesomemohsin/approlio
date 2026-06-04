@@ -5,6 +5,7 @@ import { ExternalLink, Facebook, Globe, Pause, Play, Plus, RefreshCcw, Rss, Sear
 import type { Source, SourcePlatform } from "@/lib/supabase/types";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const platforms: Array<"all" | SourcePlatform> = ["all", "facebook", "youtube", "tiktok", "rss", "website"];
 
@@ -29,6 +30,7 @@ export default function SourcesTable() {
   const [platform, setPlatform] = useState<"all" | SourcePlatform>("all");
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", platform: "facebook" as SourcePlatform, url: "" });
 
   const loadSources = useCallback(async () => {
@@ -90,8 +92,27 @@ export default function SourcesTable() {
   }
 
   async function syncSource(id: string) {
-    await fetch(`/api/sources/${id}/sync`, { method: "POST" });
-    await loadSources();
+    setSyncingId(id);
+    toast.promise(
+      (async () => {
+        try {
+          const response = await fetch(`/api/sources/${id}/sync`, { method: "POST" });
+          const resBody = await response.json();
+          if (!response.ok) {
+            throw new Error(resBody.error || `Failed with status ${response.status}`);
+          }
+          await loadSources();
+          return resBody;
+        } finally {
+          setSyncingId(null);
+        }
+      })(),
+      {
+        loading: "Syncing source (running background scraper, this may take up to 30 seconds)...",
+        success: "Source synced successfully!",
+        error: (err) => `Sync failed: ${err.message || String(err)}`,
+      }
+    );
   }
 
   return (
@@ -192,8 +213,13 @@ export default function SourcesTable() {
                   </td>
                   <td className="px-4 sm:px-6 py-4">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => syncSource(source.id)} className="rounded-md p-2 hover:bg-muted" title="Sync now">
-                        <RefreshCcw className="h-4 w-4" />
+                      <button 
+                        onClick={() => syncSource(source.id)} 
+                        disabled={syncingId !== null}
+                        className="rounded-md p-2 hover:bg-muted disabled:opacity-50" 
+                        title="Sync now"
+                      >
+                        <RefreshCcw className={cn("h-4 w-4", syncingId === source.id && "animate-spin")} />
                       </button>
                       <button onClick={() => updateSource(source.id, { active: !source.active })} className="rounded-md p-2 hover:bg-muted" title={source.active ? "Pause" : "Resume"}>
                         {source.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
