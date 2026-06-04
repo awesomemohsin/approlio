@@ -37,7 +37,8 @@ function cleanPostText(text: string) {
     .replace(/· Shared with Public|· Shared with Friends|Shared with Public/gi, "")
     .replace(/\b\d+[hdm]\b/g, "")
     .replace(/… See more|See more|See less/gi, "")
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n\n")
     .trim();
 }
 
@@ -80,6 +81,29 @@ export class FacebookAdapter implements SourceAdapter {
       for (let i = 0; i < 3; i++) {
         await page.evaluate("window.scrollBy(0, 800)");
         await page.waitForTimeout(1500);
+      }
+
+      // Expand all "See more" buttons to load the full text of long posts
+      try {
+        await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('div[role="button"], span, a')).filter((el) => {
+            const text = el.textContent?.trim() || "";
+            return (
+              text === "See more" ||
+              text === "See More" ||
+              text.includes("… See more") ||
+              text.includes("... See more") ||
+              text === "আরো দেখুন" ||
+              text === "আরও দেখুন"
+            );
+          });
+          for (const btn of buttons) {
+            (btn as HTMLElement).click();
+          }
+        });
+        await page.waitForTimeout(1000);
+      } catch (err) {
+        console.warn("Failed to click See More buttons:", err);
       }
 
       let evaluatedPosts: Array<{
