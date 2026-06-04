@@ -42,13 +42,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    const supabase = createSupabaseAdmin();
+
+    // 1. Fetch current post to prevent duplicate handling
+    const { data: existingPost, error: fetchError } = await supabase
+      .from("posts")
+      .select("*")
+      .eq("id", postId)
+      .single();
+
+    if (fetchError || !existingPost) {
+      return NextResponse.json({ ok: true });
+    }
+
+    // If already approved, posted, or rejected, answer callback and update UI without republishing
+    if (
+      existingPost.status === "approved" ||
+      existingPost.status === "posted" ||
+      existingPost.status === "rejected"
+    ) {
+      const alertMessage = existingPost.status === "rejected" ? "Post already rejected." : "Post already approved/published.";
+      await answerTelegramCallback(callback.id, alertMessage);
+
+      if (callback.message?.message_id && callback.message?.chat?.id) {
+        const originalText = callback.message.text || callback.message.caption || "";
+        // Only prepend status if it wasn't already prepended
+        if (!originalText.startsWith("[APPROVED") && !originalText.startsWith("[REJECTED")) {
+          const updatedText = `[${existingPost.status === "rejected" ? "REJECTED ❌" : "APPROVED ✅"}]\n\n${originalText}`;
+          if (callback.message.caption !== undefined) {
+            await editTelegramMessageCaption(callback.message.chat.id, callback.message.message_id, updatedText);
+          } else {
+            await editTelegramMessageText(callback.message.chat.id, callback.message.message_id, updatedText);
+          }
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // 2. Perform the status update
     const status = action === "approve" ? "approved" : "rejected";
     const actor = callback.from?.username ? `telegram:${callback.from.username}` : `telegram:${callback.from?.id ?? "unknown"}`;
-    const supabase = createSupabaseAdmin();
-    const { data: post, error } = await supabase.from("posts").update({ status }).eq("id", postId).select("*").single();
+    
+    const { data: post, error: updateError } = await supabase
+      .from("posts")
+      .update({ status })
+      .eq("id", postId)
+      .select("*")
+      .single();
 
-    if (error) {
-      throw error;
+    if (updateError || !post) {
+      throw updateError || new Error("Failed to update post status");
     }
 
     await logAction(supabase, {
