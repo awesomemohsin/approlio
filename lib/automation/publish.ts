@@ -115,3 +115,39 @@ export async function retryFailedPosts() {
 
   return results;
 }
+
+export async function cleanupDatabase() {
+  const supabase = createSupabaseAdmin();
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    // 1. Auto-reject pending posts older than 3 days
+    const { error: rejectError } = await supabase
+      .from("posts")
+      .update({ status: "rejected", last_error: "Auto-rejected after 3 days of inactivity" })
+      .eq("status", "pending")
+      .lt("created_at", threeDaysAgo);
+
+    if (rejectError) {
+      logger.error("auto_reject_failed", { error: rejectError.message });
+    } else {
+      logger.info("auto_reject_completed");
+    }
+
+    // 2. Delete posts older than 90 days (3 months)
+    const { error: deleteError } = await supabase
+      .from("posts")
+      .delete()
+      .lt("created_at", ninetyDaysAgo);
+
+    if (deleteError) {
+      logger.error("cleanup_delete_failed", { error: deleteError.message });
+    } else {
+      logger.info("cleanup_delete_completed");
+    }
+  } catch (error) {
+    logger.error("cleanup_database_failed", { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+

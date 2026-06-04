@@ -1,8 +1,9 @@
-import { publishApprovedPosts, retryFailedPosts } from "@/lib/automation/publish";
+import { publishApprovedPosts, retryFailedPosts, cleanupDatabase } from "@/lib/automation/publish";
 import { logger } from "@/lib/logger";
 
 async function main() {
   const [published, retried] = await Promise.all([publishApprovedPosts(), retryFailedPosts()]);
+  await cleanupDatabase();
   logger.info("publish_cli_finished", { published, retried });
 }
 
