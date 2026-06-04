@@ -1,3 +1,6 @@
+import { loadEnvConfig } from "@next/env";
+loadEnvConfig(process.cwd());
+
 const optional = (key: string) => process.env[key]?.trim() || undefined;
 
 export function requiredEnv(key: string) {
