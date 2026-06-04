@@ -38,3 +38,33 @@ export async function PATCH(
     return jsonError(error);
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await requireDashboardUser();
+    const { id } = await params;
+    const supabase = createSupabaseAdmin();
+
+    // Set source_id to null on associated posts to prevent foreign key violation
+    await supabase.from("posts").update({ source_id: null }).eq("source_id", id);
+
+    const { error } = await supabase.from("sources").delete().eq("id", id);
+    if (error) {
+      throw error;
+    }
+
+    await supabase.from("publish_logs").insert({
+      action: "source_deleted",
+      status: "success",
+      response: { source_id: id },
+      actor: user.email ?? user.id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return jsonError(error);
+  }
+}

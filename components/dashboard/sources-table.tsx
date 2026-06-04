@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Facebook, Globe, Pause, Play, Plus, RefreshCcw, Rss, Search, Youtube, PlayCircle } from "lucide-react";
+import { ExternalLink, Facebook, Globe, Pause, Play, Plus, RefreshCcw, Rss, Search, Youtube, PlayCircle, Trash2 } from "lucide-react";
 import type { Source, SourcePlatform } from "@/lib/supabase/types";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
@@ -114,6 +114,29 @@ export default function SourcesTable() {
       }
     );
   }
+  
+  async function deleteSource(id: string, name: string) {
+    if (!confirm(`Are you sure you want to delete the source "${name}"? This will unlink it from its posts but keep the posts in your dashboard.`)) {
+      return;
+    }
+    
+    toast.promise(
+      (async () => {
+        const response = await fetch(`/api/sources/${id}`, { method: "DELETE" });
+        const resBody = await response.json();
+        if (!response.ok) {
+          throw new Error(resBody.error || `Failed with status ${response.status}`);
+        }
+        await loadSources();
+        return resBody;
+      })(),
+      {
+        loading: `Deleting source "${name}"...`,
+        success: `Source "${name}" deleted successfully!`,
+        error: (err) => `Failed to delete source: ${err.message || String(err)}`,
+      }
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -223,6 +246,13 @@ export default function SourcesTable() {
                       </button>
                       <button onClick={() => updateSource(source.id, { active: !source.active })} className="rounded-md p-2 hover:bg-muted" title={source.active ? "Pause" : "Resume"}>
                         {source.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                      </button>
+                      <button 
+                        onClick={() => deleteSource(source.id, source.name)} 
+                        className="rounded-md p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" 
+                        title="Delete source"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </td>
