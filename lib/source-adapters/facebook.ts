@@ -267,14 +267,33 @@ export class FacebookAdapter implements SourceAdapter {
         publishedAt: string | null;
       }>;
 
+      // Extract the video mapping from page content to resolve direct MP4 CDN URLs
+      const html = await page.content();
+      const cleanHtml = html.replace(/\\/g, "");
+      const videoMap = new Map<string, string>();
+      const regex = /dash_manifest_url":"https:[^"]+?v=(\d+)/g;
+      let match;
+      while ((match = regex.exec(cleanHtml)) !== null) {
+        const id = match[1];
+        const index = match.index;
+        const sub = cleanHtml.slice(index, index + 3000);
+        const hdMatch = sub.match(/"browser_native_hd_url"\s*:\s*"([^"]+)"/i);
+        const sdMatch = sub.match(/"browser_native_sd_url"\s*:\s*"([^"]+)"/i);
+        const videoUrl = (hdMatch ? hdMatch[1] : null) || (sdMatch ? sdMatch[1] : null);
+        if (videoUrl) {
+          videoMap.set(id, videoUrl);
+        }
+      }
+
       return evaluatedPosts.map((post) => {
+        const directVideoUrl = videoMap.get(post.id) || null;
         return {
           sourcePostId: stablePostId("facebook", post.id),
           sourceUrl: post.cleanedUrl,
           platform: "facebook",
           caption: cleanPostText(post.text).slice(0, 4000) || null,
           thumbnailUrl: post.image,
-          videoUrl: post.video,
+          videoUrl: directVideoUrl || post.video,
           publishedAt: post.publishedAt,
         };
       });
