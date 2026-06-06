@@ -34,6 +34,34 @@ async function importPost(source: Source, post: NormalizedSourcePost) {
     return { imported: false, postId: existing.id };
   }
 
+  // Check for duplicate caption in the last 48 hours for the same profile (cross-posts across pages)
+  if (post.caption) {
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const norm = (txt: string) => txt.replace(/\s+/g, "").toLowerCase();
+    const normalizedNewCaption = norm(post.caption);
+
+    const { data: recentPosts } = await supabase
+      .from("posts")
+      .select("id, original_caption")
+      .eq("profile_id", source.profile_id)
+      .gt("created_at", fortyEightHoursAgo);
+
+    if (recentPosts) {
+      const duplicate = recentPosts.find((p) => {
+        const existingCap = p.original_caption || "";
+        return norm(existingCap).includes(normalizedNewCaption) || normalizedNewCaption.includes(norm(existingCap));
+      });
+
+      if (duplicate) {
+        logger.info("skipping_duplicate_caption_post", {
+          sourcePostId: post.sourcePostId,
+          matchingPostId: duplicate.id,
+        });
+        return { imported: false, postId: duplicate.id };
+      }
+    }
+  }
+
   let finalCaption = post.caption || "";
   try {
     const { data: profile } = await supabase

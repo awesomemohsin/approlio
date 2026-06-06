@@ -67,6 +67,8 @@ function SettingsContent() {
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [askForDestination, setAskForDestination] = useState<boolean>(true);
+  const [defaultComment, setDefaultComment] = useState<string>("");
+  const [defaultCaption, setDefaultCaption] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [updatingSettings, setUpdatingSettings] = useState<boolean>(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -106,8 +108,16 @@ function SettingsContent() {
 
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
-          if (settingsData.data && settingsData.data.ask_for_destination_on_approval !== undefined) {
-            setAskForDestination(settingsData.data.ask_for_destination_on_approval);
+          if (settingsData.data) {
+            if (settingsData.data.ask_for_destination_on_approval !== undefined) {
+              setAskForDestination(settingsData.data.ask_for_destination_on_approval);
+            }
+            if (settingsData.data.default_comment !== undefined) {
+              setDefaultComment(settingsData.data.default_comment);
+            }
+            if (settingsData.data.default_caption !== undefined) {
+              setDefaultCaption(settingsData.data.default_caption);
+            }
           }
         }
       } catch (error) {
@@ -194,6 +204,60 @@ function SettingsContent() {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(`Failed to update setting: ${message}`);
+    } finally {
+      setUpdatingSettings(false);
+    }
+  }
+
+  // Save default comment template
+  async function handleSaveDefaultComment(value: string) {
+    try {
+      setUpdatingSettings(true);
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "default_comment",
+          value: value
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      setDefaultComment(value);
+      toast.success("Default comment template updated");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to save comment template: ${message}`);
+    } finally {
+      setUpdatingSettings(false);
+    }
+  }
+
+  // Save default caption suffix
+  async function handleSaveDefaultCaption(value: string) {
+    try {
+      setUpdatingSettings(true);
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "default_caption",
+          value: value
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      setDefaultCaption(value);
+      toast.success("Default caption template updated");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to save caption template: ${message}`);
     } finally {
       setUpdatingSettings(false);
     }
@@ -334,35 +398,101 @@ function SettingsContent() {
           </div>
 
           {/* Publishing Settings Panel */}
-          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-            <div className="flex items-center gap-2.5 mb-4">
-              <Sliders className="w-5 h-5 text-muted-foreground" />
-              <h2 className="text-lg font-bold text-foreground">Workflow Preferences</h2>
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-6">
+            <div>
+              <div className="flex items-center gap-2.5 mb-4">
+                <Sliders className="w-5 h-5 text-muted-foreground" />
+                <h2 className="text-lg font-bold text-foreground">Workflow Preferences</h2>
+              </div>
+
+              <div className="flex items-start justify-between gap-4 p-4 rounded-lg bg-muted/20 border border-border">
+                <div className="space-y-0.5">
+                  <p className="font-semibold text-foreground text-sm">
+                    Prompt for destinations when approving a post
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    If enabled, you can select which connected pages or channels to publish to. If disabled, approved posts are instantly queued for all active channels.
+                  </p>
+                </div>
+
+                <button
+                  disabled={updatingSettings || loading}
+                  onClick={() => handleToggleSettings(!askForDestination)}
+                  className="text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-50"
+                >
+                  {updatingSettings ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : askForDestination ? (
+                    <ToggleRight className="w-7 h-7 text-green-500" />
+                  ) : (
+                    <ToggleLeft className="w-7 h-7" />
+                  )}
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-start justify-between gap-4 p-4 rounded-lg bg-muted/20 border border-border">
-              <div className="space-y-0.5">
-                <p className="font-semibold text-foreground text-sm">
-                  Prompt for destinations when approving a post
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  If enabled, you can select which connected pages or channels to publish to. If disabled, approved posts are instantly queued for all active channels.
+            <div className="border-t border-border pt-6 space-y-4">
+              <div>
+                <h3 className="font-semibold text-foreground text-sm">
+                  Default Comment (Facebook)
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Automatically post this comment immediately after publishing a Facebook post. Leave blank to disable.
                 </p>
               </div>
 
-              <button
-                disabled={updatingSettings || loading}
-                onClick={() => handleToggleSettings(!askForDestination)}
-                className="text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-50"
-              >
-                {updatingSettings ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : askForDestination ? (
-                  <ToggleRight className="w-7 h-7 text-green-500" />
-                ) : (
-                  <ToggleLeft className="w-7 h-7" />
-                )}
-              </button>
+              <div className="space-y-2">
+                <textarea
+                  disabled={loading || updatingSettings}
+                  value={defaultComment}
+                  onChange={(e) => setDefaultComment(e.target.value)}
+                  placeholder="@followers&#10;Order Now: https://parlebangladesh.com"
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                />
+                <div className="flex justify-end">
+                  <button
+                    disabled={loading || updatingSettings}
+                    onClick={() => handleSaveDefaultComment(defaultComment)}
+                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {updatingSettings && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                    Save Comment Template
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-6 space-y-4">
+              <div>
+                <h3 className="font-semibold text-foreground text-sm">
+                  Default Caption Suffix (All Platforms)
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Automatically append this text to the bottom of the original caption when publishing posts. Leave blank to disable.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <textarea
+                  disabled={loading || updatingSettings}
+                  value={defaultCaption}
+                  onChange={(e) => setDefaultCaption(e.target.value)}
+                  placeholder="Order Now: https://parlebangladesh.com"
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                />
+                <div className="flex justify-end">
+                  <button
+                    disabled={loading || updatingSettings}
+                    onClick={() => handleSaveDefaultCaption(defaultCaption)}
+                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {updatingSettings && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                    Save Caption Suffix
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 

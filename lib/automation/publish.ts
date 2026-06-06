@@ -4,7 +4,7 @@ import { logAction } from "@/lib/automation/audit";
 import { publishToFacebook, publishToFacebookPage } from "@/lib/automation/facebook-publisher";
 import { publishToYouTubeChannel } from "@/lib/automation/youtube-publisher";
 import { logger } from "@/lib/logger";
-import { publishConfig } from "@/lib/env";
+import { publishConfig, requiredEnv } from "@/lib/env";
 import { withRetry } from "@/lib/retry";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -89,6 +89,28 @@ async function publishPostToConnection(post: Post, connection: Connection, supab
 export async function publishPost(post: Post, actor = "system") {
   const supabase = createSupabaseAdmin();
 
+  // Load default_caption suffix from settings and append to post caption in memory
+  try {
+    const { data: captionSetting } = await supabase
+      .from("settings")
+      .select("value")
+      .eq("profile_id", post.profile_id)
+      .eq("key", "default_caption")
+      .maybeSingle();
+
+    const defaultCaption = captionSetting?.value as string | undefined;
+    if (defaultCaption && defaultCaption.trim()) {
+      const suffix = `\n\n${defaultCaption.trim()}`;
+      if (post.edited_caption) {
+        post.edited_caption = `${post.edited_caption.trim()}${suffix}`;
+      } else {
+        post.original_caption = `${(post.original_caption ?? "").trim()}${suffix}`;
+      }
+    }
+  } catch (e) {
+    logger.warn("failed_to_load_default_caption_suffix", { postId: post.id, error: String(e) });
+  }
+
   // 1. Fetch destination entries mapped to this post
   const { data: destinationsResult, error: destError } = await supabase
     .from("post_destinations")
@@ -150,6 +172,42 @@ export async function publishPost(post: Post, actor = "system") {
         attempts: 3,
         onRetry: (error, attempt) => logger.warn("facebook_publish_retry", { postId: post.id, attempt, error: String(error) }),
       });
+
+      const responseId = (response as { id?: string })?.id;
+      // Post default comment if configured
+      if (responseId) {
+        try {
+          const { data: commentSetting } = await supabase
+            .from("settings")
+            .select("value")
+            .eq("profile_id", post.profile_id)
+            .eq("key", "default_comment")
+            .maybeSingle();
+
+          const defaultComment = commentSetting?.value as string | undefined;
+          if (defaultComment && defaultComment.trim()) {
+            const pageAccessToken = requiredEnv("META_PAGE_ACCESS_TOKEN");
+            const { graphVersion } = publishConfig();
+            const commentUrl = `https://graph.facebook.com/${graphVersion}/${responseId}/comments`;
+            const commentRes = await fetch(commentUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                access_token: pageAccessToken,
+                message: defaultComment.trim(),
+              }),
+            });
+            if (!commentRes.ok) {
+              const errPayload = await commentRes.json();
+              logger.warn("post_default_comment_legacy_failed", { postId: post.id, error: JSON.stringify(errPayload) });
+            } else {
+              logger.info("post_default_comment_legacy_success", { postId: post.id });
+            }
+          }
+        } catch (commentErr) {
+          logger.error("default_comment_legacy_logic_error", { postId: post.id, error: String(commentErr) });
+        }
+      }
 
       await supabase
         .from("posts")
@@ -222,6 +280,54 @@ export async function publishPost(post: Post, actor = "system") {
             }),
         }
       );
+
+      const responseId = (response as { id?: string })?.id;
+      // Post default comment if configured and platform is facebook
+      if (connection.platform === "facebook" && responseId) {
+        try {
+          const { data: commentSetting } = await supabase
+            .from("settings")
+            .select("value")
+            .eq("profile_id", post.profile_id)
+            .eq("key", "default_comment")
+            .maybeSingle();
+
+          const defaultComment = commentSetting?.value as string | undefined;
+          if (defaultComment && defaultComment.trim()) {
+            const tokenData = connection.token_data as ConnectionTokenData;
+            if (tokenData && tokenData.access_token) {
+              const { graphVersion } = publishConfig();
+              const commentUrl = `https://graph.facebook.com/${graphVersion}/${responseId}/comments`;
+              const commentRes = await fetch(commentUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                  access_token: tokenData.access_token,
+                  message: defaultComment.trim(),
+                }),
+              });
+              if (!commentRes.ok) {
+                const errPayload = await commentRes.json();
+                logger.warn("post_default_comment_failed", { 
+                  postId: post.id, 
+                  connectionName: connection.name, 
+                  error: JSON.stringify(errPayload) 
+                });
+              } else {
+                logger.info("post_default_comment_success", { 
+                  postId: post.id, 
+                  connectionName: connection.name 
+                });
+              }
+            }
+          }
+        } catch (commentErr) {
+          logger.error("default_comment_logic_error", { 
+            postId: post.id, 
+            error: String(commentErr) 
+          });
+        }
+      }
 
       await supabase
         .from("post_destinations")

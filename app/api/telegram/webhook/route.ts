@@ -183,11 +183,16 @@ export async function POST(request: NextRequest) {
     await answerTelegramCallback(callback.id, "Post approved for publishing!");
 
     // Execute direct publishing
-    await publishPost(post, actor);
+    const result = await publishPost(post, actor);
 
     if (callback.message.chat?.id) {
       const originalText = callback.message.text || callback.message.caption || "";
-      const updatedText = `[APPROVED ✅]\n\n${originalText}`;
+      const isSuccess = result.status === "posted";
+      const statusText = isSuccess ? "APPROVED ✅" : "PUBLISH FAILED ❌";
+      let updatedText = `[${statusText}]\n\n${originalText}`;
+      if (!isSuccess && result.error) {
+        updatedText += `\n\n⚠️ Error: ${result.error}`;
+      }
       if (callback.message.caption !== undefined) {
         await editTelegramMessageCaption(callback.message.chat.id, callback.message.message_id, updatedText);
       } else {
