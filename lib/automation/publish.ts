@@ -89,6 +89,29 @@ async function publishPostToConnection(post: Post, connection: Connection, supab
 export async function publishPost(post: Post, actor = "system") {
   const supabase = createSupabaseAdmin();
 
+  // Try to acquire atomic publishing lock to prevent concurrent double-publishing
+  const now = new Date();
+  const lockTime = new Date(now.getTime() + 5 * 60 * 1000).toISOString(); // lock for 5 minutes
+
+  const { data: lockedPost, error: lockError } = await supabase
+    .from("posts")
+    .update({ next_retry_at: lockTime })
+    .eq("id", post.id)
+    .in("status", ["approved", "failed"])
+    .or(`next_retry_at.is.null,next_retry_at.lt.${now.toISOString()}`)
+    .select("*")
+    .maybeSingle();
+
+  if (lockError) {
+    logger.error("lock_post_failed", { postId: post.id, error: lockError.message });
+    return { id: post.id, status: "failed" as const, error: "Failed to acquire publish lock" };
+  }
+
+  if (!lockedPost) {
+    logger.warn("post_already_publishing_or_processed", { postId: post.id });
+    return { id: post.id, status: "already_publishing" as const };
+  }
+
   // Load default_caption suffix from settings and append to post caption in memory
   try {
     const { data: captionSetting } = await supabase
@@ -100,11 +123,22 @@ export async function publishPost(post: Post, actor = "system") {
 
     const defaultCaption = captionSetting?.value as string | undefined;
     if (defaultCaption && defaultCaption.trim()) {
-      const suffix = `\n\n${defaultCaption.trim()}`;
+      const cleanDefault = defaultCaption.trim();
+      const suffix = `\n\n${cleanDefault}`;
+      
+      const checkAndAppend = (caption: string) => {
+        const trimmedCap = caption.trim();
+        const norm = (txt: string) => txt.replace(/\s+/g, "").toLowerCase();
+        if (norm(trimmedCap).includes(norm(cleanDefault))) {
+          return trimmedCap;
+        }
+        return `${trimmedCap}${suffix}`;
+      };
+
       if (post.edited_caption) {
-        post.edited_caption = `${post.edited_caption.trim()}${suffix}`;
+        post.edited_caption = checkAndAppend(post.edited_caption);
       } else {
-        post.original_caption = `${(post.original_caption ?? "").trim()}${suffix}`;
+        post.original_caption = checkAndAppend(post.original_caption ?? "");
       }
     }
   } catch (e) {
@@ -173,7 +207,7 @@ export async function publishPost(post: Post, actor = "system") {
         onRetry: (error, attempt) => logger.warn("facebook_publish_retry", { postId: post.id, attempt, error: String(error) }),
       });
 
-      const responseId = (response as { id?: string })?.id;
+      const responseId = (response as { post_id?: string })?.post_id || (response as { id?: string })?.id;
       // Post default comment if configured
       if (responseId) {
         try {
@@ -281,7 +315,7 @@ export async function publishPost(post: Post, actor = "system") {
         }
       );
 
-      const responseId = (response as { id?: string })?.id;
+      const responseId = (response as { post_id?: string })?.post_id || (response as { id?: string })?.id;
       // Post default comment if configured and platform is facebook
       if (connection.platform === "facebook" && responseId) {
         try {
@@ -395,10 +429,12 @@ export async function publishPost(post: Post, actor = "system") {
 export async function publishApprovedPosts() {
   const supabase = createSupabaseAdmin();
   const { batchSize } = publishConfig();
+  const now = new Date().toISOString();
   const { data: posts, error } = await supabase
     .from("posts")
     .select("*")
     .eq("status", "approved")
+    .or(`next_retry_at.is.null,next_retry_at.lt.${now}`)
     .order("created_at", { ascending: true })
     .limit(batchSize);
 

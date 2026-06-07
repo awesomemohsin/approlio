@@ -73,8 +73,9 @@ async function importPost(source: Source, post: NormalizedSourcePost) {
     if (profile?.name === "Parle Bangladesh") {
       const footer = "Order Now: https://parlebangladesh.com";
       if (finalCaption) {
-        if (!finalCaption.includes(footer)) {
-          finalCaption = `${finalCaption}\n${footer}`;
+        const norm = (txt: string) => txt.replace(/\s+/g, "").toLowerCase();
+        if (!norm(finalCaption).includes(norm(footer))) {
+          finalCaption = `${finalCaption.trim()}\n${footer}`;
         }
       } else {
         finalCaption = footer;

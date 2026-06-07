@@ -122,6 +122,24 @@ export async function POST(request: NextRequest) {
     }
 
     // action === "approve"
+    // Perform the status update to approved (conditional on it being pending to avoid race conditions)
+    const { data: post, error: updateError } = await supabase
+      .from("posts")
+      .update({ status: "approved" })
+      .eq("id", existingPost.id)
+      .eq("status", "pending")
+      .select("*")
+      .maybeSingle();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    if (!post) {
+      // Already approved/processed by a concurrent request, return success early
+      return NextResponse.json({ ok: true });
+    }
+
     // Determine connection IDs to approve for
     let targetConnectionIds: string[] = [];
     if (target === "all") {
@@ -138,38 +156,35 @@ export async function POST(request: NextRequest) {
     }
 
     if (targetConnectionIds.length > 0) {
-      // Delete existing destinations
-      await supabase
-        .from("post_destinations")
-        .delete()
-        .eq("post_id", existingPost.id);
+      try {
+        // Delete existing destinations
+        await supabase
+          .from("post_destinations")
+          .delete()
+          .eq("post_id", existingPost.id);
 
-      // Insert new destinations
-      const destinations = targetConnectionIds.map((connId: string) => ({
-        post_id: existingPost.id,
-        connection_id: connId,
-        status: "pending" as const,
-      }));
+        // Insert new destinations
+        const destinations = targetConnectionIds.map((connId: string) => ({
+          post_id: existingPost.id,
+          connection_id: connId,
+          status: "pending" as const,
+        }));
 
-      const { error: destError } = await supabase
-        .from("post_destinations")
-        .insert(destinations);
+        const { error: destError } = await supabase
+          .from("post_destinations")
+          .insert(destinations);
 
-      if (destError) {
-        throw destError;
+        if (destError) {
+          throw destError;
+        }
+      } catch (err) {
+        // Revert status to pending on failure
+        await supabase
+          .from("posts")
+          .update({ status: "pending" })
+          .eq("id", existingPost.id);
+        throw err;
       }
-    }
-
-    // Perform the status update to approved
-    const { data: post, error: updateError } = await supabase
-      .from("posts")
-      .update({ status: "approved" })
-      .eq("id", existingPost.id)
-      .select("*")
-      .single();
-
-    if (updateError || !post) {
-      throw updateError || new Error("Failed to update post status to approved");
     }
 
     await logAction(supabase, {
@@ -184,6 +199,10 @@ export async function POST(request: NextRequest) {
 
     // Execute direct publishing
     const result = await publishPost(post, actor);
+
+    if (result.status === "already_publishing") {
+      return NextResponse.json({ ok: true });
+    }
 
     if (callback.message.chat?.id) {
       const originalText = callback.message.text || callback.message.caption || "";
