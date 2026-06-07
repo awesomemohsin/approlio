@@ -55,13 +55,21 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
     caption || "(No caption detected)",
   ].filter(val => val !== "").join("\n");
 
+  const defaultLinksRow = [{ text: "View Review Panel", url: reviewUrl }];
+  if (post.source_url) {
+    defaultLinksRow.push({ text: "🔗 Original Post", url: post.source_url });
+  }
+  if (source?.url) {
+    defaultLinksRow.push({ text: "📂 Original Source", url: source.url });
+  }
+
   let replyMarkup = {
     inline_keyboard: [
       [
         { text: "Approve to All", callback_data: "approve:all" },
         { text: "Reject", callback_data: "reject" },
       ],
-      [{ text: "View Review Panel", url: reviewUrl }],
+      defaultLinksRow,
     ],
   };
 
@@ -92,8 +100,15 @@ export async function sendTelegramApproval(post: Post, source?: Source | null) {
         { text: "Reject", callback_data: "reject" }
       ]);
 
-      // Review Link
-      keyboard.push([{ text: "View Review Panel", url: reviewUrl }]);
+      // Review Link & Source links
+      const linksRow = [{ text: "View Review Panel", url: reviewUrl }];
+      if (post.source_url) {
+        linksRow.push({ text: "🔗 Original Post", url: post.source_url });
+      }
+      if (source?.url) {
+        linksRow.push({ text: "📂 Original Source", url: source.url });
+      }
+      keyboard.push(linksRow);
 
       replyMarkup = { inline_keyboard: keyboard };
     }

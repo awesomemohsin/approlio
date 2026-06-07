@@ -192,7 +192,19 @@ export default function ContentCard({
         <div className="flex items-center gap-3 min-w-0">
           {platformIcon(post.platform)}
           <div className="min-w-0">
-            <p className="font-semibold text-foreground truncate">{post.sources?.name ?? post.platform}</p>
+            {post.sources?.url ? (
+              <a
+                href={post.sources.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-foreground truncate hover:underline hover:text-primary transition-colors inline-flex items-center gap-1.5 max-w-full"
+              >
+                <span className="truncate">{post.sources.name}</span>
+                <ExternalLink className="w-3 h-3 text-muted-foreground/80 shrink-0" />
+              </a>
+            ) : (
+              <p className="font-semibold text-foreground truncate">{post.sources?.name ?? post.platform}</p>
+            )}
             <p className="text-xs text-muted-foreground">{new Date(post.created_at).toLocaleString()}</p>
           </div>
         </div>
@@ -228,13 +240,21 @@ export default function ContentCard({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <a href={post.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">
-          <ExternalLink className="w-3.5 h-3.5" />
-          Source
-        </a>
+      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+        {post.source_url && (
+          <a href={post.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
+            <ExternalLink className="w-3.5 h-3.5" />
+            Original Post
+          </a>
+        )}
+        {post.sources?.url && (
+          <a href={post.sources.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
+            <ExternalLink className="w-3.5 h-3.5" />
+            Original Source
+          </a>
+        )}
         {post.video_url && (
-          <a href={post.video_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">
+          <a href={post.video_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
             <PlayCircle className="w-3.5 h-3.5" />
             Video
           </a>
