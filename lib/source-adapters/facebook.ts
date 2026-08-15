@@ -289,8 +289,8 @@ export class FacebookAdapter implements SourceAdapter {
 
         evaluatedPosts = (await page.evaluate(
           `(() => {
-            const uniqueList = \${JSON.stringify(uniquePosts)};
-            const allRawPostLinks = \${JSON.stringify(rawPosts.postLinks)};
+            const uniqueList = ${JSON.stringify(uniquePosts)};
+            const allRawPostLinks = ${JSON.stringify(rawPosts.postLinks)};
             const anchors = [...document.querySelectorAll("a[href]")];
 
             const extractId = (href) => {
