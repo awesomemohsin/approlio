@@ -14,7 +14,7 @@ export default function DashboardLayout({
 
   return (
     <ProfileProvider>
-      <div className="flex h-screen bg-background">
+      <div className="dark flex h-screen bg-background text-foreground">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
