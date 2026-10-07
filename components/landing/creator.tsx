@@ -121,7 +121,7 @@ export function LandingCreator() {
                   A Personal Note From Mohsin
                 </span>
                 <p className="text-slate-800 text-base sm:text-lg font-semibold leading-relaxed">
-                  "I created Approlio to solve a simple problem: running social media pages manually takes hours of copying links, downloading files, writing tags, and uploading every single day."
+                  &ldquo;I created Approlio to solve a simple problem: running social media pages manually takes hours of copying links, downloading files, writing tags, and uploading every single day.&rdquo;
                 </p>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   With Approlio, you never have to waste your time doing repetitive manual work. The bot monitors the best pages 24/7, sends you a notification on Telegram with a video preview, and lets you approve and post in 1 second.

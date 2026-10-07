@@ -77,7 +77,7 @@ export function LandingServices() {
             </span>
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            You don't have to code or configure servers. I handle the entire installation, 
+            You don&apos;t have to code or configure servers. I handle the entire installation, 
             telegram bot authorization, and testing for your brand.
           </p>
         </div>

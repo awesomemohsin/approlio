@@ -62,9 +62,9 @@ export function LandingHero() {
             {/* Subtitle / Clear Explanation */}
             <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl font-normal">
               Approlio watches top Facebook pages, YouTube channels & TikTok creators 24/7. 
-              When a viral video drops, it pings your 
-              <strong className="text-slate-900 font-semibold"> Telegram with a video preview</strong>. 
-              You tap <strong>"Approve"</strong>, and it automatically cross-posts to your Facebook Page & YouTube Shorts!
+              When a viral video drops, it pings your{' '}
+              <strong className="text-slate-900 font-semibold">Telegram with a video preview</strong>.{' '}
+              You tap <strong>&ldquo;Approve&rdquo;</strong>, and it automatically cross-posts to your Facebook Page &amp; YouTube Shorts!
             </p>
 
             {/* Supported Platform Badges */}
@@ -242,7 +242,7 @@ export function LandingHero() {
 
                       <div className="z-10 bg-black/50 backdrop-blur-sm -mx-2.5 -mb-2.5 p-2 rounded-b-xl border-t border-white/10">
                         <p className="text-[11px] font-bold text-white truncate">
-                          "Top 5 AI Tools Saving 20 Hours a Week"
+                          &ldquo;Top 5 AI Tools Saving 20 Hours a Week&rdquo;
                         </p>
                         <p className="text-[9px] text-slate-300">
                           2.4M Views on Original • High Engagement
@@ -253,7 +253,7 @@ export function LandingHero() {
                     {/* Caption Preview Box */}
                     <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-700 leading-snug">
                       <span className="font-bold text-slate-400 block mb-0.5">CAPTION PREVIEW:</span>
-                      "These 5 tools will completely transform your workflow! Save this clip before it's gone. #AI #TechHacks"
+                      &ldquo;These 5 tools will completely transform your workflow! Save this clip before it&apos;s gone. #AI #TechHacks&rdquo;
                     </div>
 
                     {/* Interactive 1-Tap Action Decision */}
@@ -277,7 +277,7 @@ export function LandingHero() {
                             </button>
                           </div>
                           <p className="text-[10px] text-center text-slate-400 font-medium">
-                            👆 Click "Approve" to test interactive response!
+                            👆 Click &ldquo;Approve&rdquo; to test interactive response!
                           </p>
                         </div>
                       )}

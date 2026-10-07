@@ -292,7 +292,7 @@ export function LandingInteractivePipeline() {
 
               <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-600">
                 <span className="font-bold text-slate-900">Summary: </span>
-                You don't need to do any technical setup yourself. Muhammad Mohsin configures the entire bot and cloud server for you.
+                You don&apos;t need to do any technical setup yourself. Muhammad Mohsin configures the entire bot and cloud server for you.
               </div>
             </div>
 
