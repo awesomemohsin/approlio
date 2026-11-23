@@ -34,6 +34,39 @@ async function getFreshFacebookVideoUrl(sourceUrl: string): Promise<string | nul
   });
 }
 
+async function getFreshFacebookImageUrls(sourceUrl: string): Promise<string[]> {
+  try {
+    return await withBrowser(async (browser) => {
+      const page = await browser.newPage({
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      });
+
+      await page.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.waitForTimeout(3000);
+
+      const images = await page.evaluate(() => {
+        return [...document.querySelectorAll('div[role="article"] img, img')]
+          .map((img) => (img as HTMLImageElement).src)
+          .filter(
+            (src) =>
+              src &&
+              src.includes("fbcdn.net") &&
+              !src.includes("/images/emoji") &&
+              !src.includes("emoji.php") &&
+              !src.includes("rsrc.php") &&
+              !src.includes("profile") &&
+              !src.startsWith("data:")
+          );
+      });
+
+      return images;
+    });
+  } catch (err) {
+    console.warn("Failed to scrape fresh Facebook image URLs:", err);
+    return [];
+  }
+}
+
 export async function publishToFacebookPage(post: Post, pageId: string, pageAccessToken: string) {
   const message = (post.edited_caption ?? post.original_caption ?? "").trim();
 
@@ -54,6 +87,73 @@ export async function publishToFacebookPage(post: Post, pageId: string, pageAcce
     }
 
     return payload;
+  }
+
+  async function uploadPhoto(
+    imageUrl: string,
+    params: { caption?: string; published?: string }
+  ): Promise<{ id: string } | null> {
+    // 1. Try to fetch image binary from imageUrl
+    let imageBlob: Blob | null = null;
+    try {
+      const res = await fetch(imageUrl);
+      if (res.ok) {
+        imageBlob = await res.blob();
+      }
+    } catch (e) {
+      // Ignore network error
+    }
+
+    // 2. If initial fetch failed and it's a facebook URL, try scraping fresh image URL
+    if (!imageBlob && (imageUrl.includes("fbcdn.net") || post.platform === "facebook")) {
+      const freshImages = await getFreshFacebookImageUrls(post.source_url);
+      if (freshImages.length > 0) {
+        try {
+          const freshRes = await fetch(freshImages[0]);
+          if (freshRes.ok) {
+            imageBlob = await freshRes.blob();
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+
+    // 3. If we have imageBlob, upload via multipart FormData (source)
+    if (imageBlob) {
+      try {
+        const formData = new FormData();
+        formData.append("access_token", pageAccessToken);
+        formData.append("source", imageBlob, "photo.jpg");
+        if (params.caption) formData.append("caption", params.caption);
+        if (params.published) formData.append("published", params.published);
+
+        const response = await fetch(graphUrl(`${pageId}/photos`), {
+          method: "POST",
+          body: formData,
+        });
+        const payload = await response.json();
+        if (response.ok) {
+          return payload;
+        }
+        console.warn("Binary photo upload rejected by Graph API:", payload);
+      } catch (uploadErr) {
+        console.warn("Binary photo upload exception:", uploadErr);
+      }
+    }
+
+    // 4. Try URL-based graphPost as fallback
+    try {
+      const bodyParams: Record<string, string> = {
+        url: imageUrl,
+        ...(params.caption ? { caption: params.caption } : {}),
+        ...(params.published ? { published: params.published } : {}),
+      };
+      return await graphPost(`${pageId}/photos`, bodyParams);
+    } catch (urlErr) {
+      console.warn("URL-based photo upload failed:", urlErr);
+      return null;
+    }
   }
 
   // 1. If we have a direct video file link, upload it as a native video
@@ -118,11 +218,10 @@ export async function publishToFacebookPage(post: Post, pageId: string, pageAcce
   if (post.additional_images && post.additional_images.length > 1) {
     const photoIds: string[] = [];
     for (const imageUrl of post.additional_images) {
-      const res = await graphPost(`${pageId}/photos`, {
-        url: imageUrl,
+      const res = await uploadPhoto(imageUrl, {
         published: "false",
       });
-      if (res.id) {
+      if (res?.id) {
         photoIds.push(res.id);
       }
     }
@@ -140,14 +239,17 @@ export async function publishToFacebookPage(post: Post, pageId: string, pageAcce
 
   // 4. Otherwise, if it has a single photo, publish it as a photo
   if (post.thumbnail_url) {
-    return graphPost(`${pageId}/photos`, {
-      url: post.thumbnail_url,
+    const res = await uploadPhoto(post.thumbnail_url, {
       caption: message,
       published: "true",
     });
+    if (res) {
+      return res;
+    }
+    console.warn("Single photo upload failed; falling back to link post on feed for post:", post.id);
   }
 
-  // 4. Default to standard feed link post
+  // 5. Default to standard feed link post
   return graphPost(`${pageId}/feed`, {
     message,
     link: post.source_url,
